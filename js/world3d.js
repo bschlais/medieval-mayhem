@@ -862,7 +862,12 @@ class WorldBuilder {
             positions.push([rng(-170, -50), rng(20, 130)]);
         }
 
-        positions.forEach(([x, z]) => tree(x, z, 1.2 + Math.random() * 0.8));
+        positions.forEach(([x, z]) => {
+            // Skip positions inside or near any house / the player home
+            if (Math.abs(x) < 45 && z > 20 && z < 55) return;  // home + south village expansion
+            if (Math.abs(x) < 42 && Math.abs(z) < 42) return;   // village center
+            tree(x, z, 1.2 + Math.random() * 0.8);
+        });
 
         // Forest floor patches
         for (let i = 0; i < 30; i++) {
