@@ -32,7 +32,7 @@ class Game {
 
         // Character data
         this.characterData = {
-            name: 'Hero', gender: 'boy', body: 'average',
+            name: 'Hero', race: 'human_knight', gender: 'boy', body: 'average',
             skin: 'light', hair: 'short', hairColor: 'brown',
             eyeColor: 'brown', facialHair: 'none',
             armor: 'leather', shoes: 'boots',
@@ -92,21 +92,22 @@ class Game {
     }
 
     _setupLighting() {
-        this.scene.add(new THREE.AmbientLight(0xFFFFFF, 0.5));
+        this._ambLight = new THREE.AmbientLight(0xFFFFFF, 0.5);
+        this.scene.add(this._ambLight);
 
-        const sun = new THREE.DirectionalLight(0xFFFAE0, 1.2);
-        sun.position.set(50, 100, 50);
-        sun.castShadow = true;
-        sun.shadow.mapSize.width  = 2048;
-        sun.shadow.mapSize.height = 2048;
-        sun.shadow.camera.near   = 0.5;
-        sun.shadow.camera.far    = 400;
-        sun.shadow.camera.left   = -150;
-        sun.shadow.camera.right  =  150;
-        sun.shadow.camera.top    =  150;
-        sun.shadow.camera.bottom = -150;
-        sun.shadow.bias = -0.001;
-        this.scene.add(sun);
+        this._sunLight = new THREE.DirectionalLight(0xFFFAE0, 1.2);
+        this._sunLight.position.set(50, 100, 50);
+        this._sunLight.castShadow = true;
+        this._sunLight.shadow.mapSize.width  = 2048;
+        this._sunLight.shadow.mapSize.height = 2048;
+        this._sunLight.shadow.camera.near   = 0.5;
+        this._sunLight.shadow.camera.far    = 500;
+        this._sunLight.shadow.camera.left   = -200;
+        this._sunLight.shadow.camera.right  =  200;
+        this._sunLight.shadow.camera.top    =  200;
+        this._sunLight.shadow.camera.bottom = -200;
+        this._sunLight.shadow.bias = -0.001;
+        this.scene.add(this._sunLight);
 
         const fill = new THREE.DirectionalLight(0x8888FF, 0.3);
         fill.position.set(-50, 20, -50);
@@ -276,10 +277,10 @@ class Game {
             if (saveData.inventory) this.inventory.fromSaveData(saveData.inventory);
         }
 
-        // RPG callbacks
-        this.rpg.onLevelUp = (level, stats) => {
-            this._pendingLevelUp = { level, stats };
-            this._pendingTitle = null;
+        // RPG callbacks — level-up now includes pendingStatPoints for manual allocation
+        this.rpg.onLevelUp = (level, stats, pts) => {
+            this._pendingLevelUp = { level, stats, pts };
+            this._pendingTitle   = null;
         };
         this.rpg.onTitleUnlock = title => {
             this._pendingTitle = title;
@@ -317,11 +318,24 @@ class Game {
         this.combat = new CombatSystem(this.scene, this.rpg, this.quests, this.inventory);
         this.combat.onKill   = (xp, gold) => {
             this.ui.showXPNumber(xp);
-            this.ui.showNotif(`Goblin defeated! +${xp} XP, +${gold} gold`, '⚔️');
+            const enemyType = this.combat.enemies.filter(e => !e.alive).pop()?.type || 'enemy';
+            this.ui.showNotif(`${enemyType === 'orc' ? 'Orc' : 'Goblin'} defeated! +${xp} XP, +${gold} gold`, '⚔️');
         };
         this.combat.onDamage = (dmg, x, z) => {
             this.ui.showDamageNumber(dmg, x, z);
         };
+        this.combat.onRepChange = (delta, npcName) => {
+            this.ui.showNotif(`You attacked ${npcName}! Reputation: ${delta}`, '😡');
+        };
+
+        // TimeSystem — references sun/ambient created in _setupLighting()
+        this.timeSystem = new TimeSystem(this.scene, this._sunLight, this._ambLight);
+        if (saveData?.time) this.timeSystem.fromSaveData(saveData.time);
+
+        // Apply race bonus once (new game only, not on load)
+        if (!saveData && this.characterData.race) {
+            this.rpg.applyRaceBonus(this.characterData.race);
+        }
 
         // Setup input for gameplay
         this._setupGameInput();
@@ -332,33 +346,40 @@ class Game {
 
     _setupGameInput() {
         document.addEventListener('keydown', e => {
+            // Prevent Space from scrolling page
+            if (e.code === 'Space') e.preventDefault();
+
             if (this.state === 'PLAYING') {
-                // Attack – trigger animation first, register hit at punch peak (~120ms)
-                if (e.code === 'KeyF') {
+                // Attack – SPACEBAR; trigger animation, register hit at punch peak (~120ms)
+                if (e.code === 'Space') {
                     this.player.triggerAttack();
                     setTimeout(() => {
                         if (this.state !== 'PLAYING') return;
                         const pos = this.player.getPosition();
                         const rot = this.player.getRotation();
+                        // Try enemy hit first
                         const hits = this.combat.playerAttack(pos.x, pos.z, rot);
-                        hits.forEach(h => this.ui.showDamageNumber(h.damage, h.x, h.z));
-                        this._checkLevelUp();
+                        if (hits.length > 0) {
+                            hits.forEach(h => this.ui.showDamageNumber(h.damage, h.x, h.z));
+                            this._checkLevelUp();
+                        } else {
+                            // Try villager hit (no damage, rep penalty)
+                            this.combat.tryAttackVillager(pos.x, pos.z, rot, this.npcSystem);
+                        }
                     }, 120);
                 }
-                // Interact
-                if (e.code === 'KeyE') this._tryInteract();
-                // Inventory
-                if (e.code === 'KeyI') this.toggleInventory();
-                // Quest journal
-                if (e.code === 'KeyJ') this.toggleQuestJournal();
-                // Quick heal
-                if (e.code === 'KeyH') this._quickHeal();
-                // Pause
-                if (e.code === 'Escape') this.togglePause();
+                if (e.code === 'KeyE')      this._tryInteract();
+                if (e.code === 'KeyI')      this.toggleInventory();
+                if (e.code === 'KeyJ')      this.toggleQuestJournal();
+                if (e.code === 'KeyH')      this._quickHeal();
+                if (e.code === 'KeyP')      this._checkLevelUp();  // open stat allocation if points pending
+                if (e.code === 'Escape')    this.togglePause();
             } else if (this.state === 'PAUSED') {
                 if (e.code === 'Escape') this.setState('PLAYING');
             } else if (this.state === 'INVENTORY' || this.state === 'QUEST_JOURNAL') {
                 if (e.code === 'Escape' || e.code === 'KeyI' || e.code === 'KeyJ') this.setState('PLAYING');
+            } else if (this.state === 'DIALOGUE') {
+                if (e.code === 'Space' || e.code === 'Enter') this.ui._advanceDialogue?.();
             }
         });
     }
@@ -423,11 +444,15 @@ class Game {
 
     _checkLevelUp() {
         if (this._pendingLevelUp) {
-            const { level, stats } = this._pendingLevelUp;
+            const { level, stats, pts } = this._pendingLevelUp;
             this._pendingLevelUp = null;
             this.setState('LEVEL_UP');
-            this.ui.showLevelUp(level, stats, this._pendingTitle);
+            this.ui.showLevelUp(level, stats, pts, this._pendingTitle);
             this._pendingTitle = null;
+        } else if (this.rpg && this.rpg.pendingStatPoints > 0 && this.state === 'PLAYING') {
+            // Show allocation if there are leftover points
+            this.setState('LEVEL_UP');
+            this.ui.showLevelUp(this.rpg.level, this.rpg.stats, this.rpg.pendingStatPoints, null);
         }
     }
 
@@ -484,6 +509,7 @@ class Game {
             rpg:        this.rpg.toSaveData(),
             quests:     this.quests.toSaveData(),
             inventory:  this.inventory.toSaveData(),
+            time:       this.timeSystem?.toSaveData(),
         });
     }
 
@@ -516,6 +542,15 @@ class Game {
         if (this.state === 'PLAYING') {
             const pos = this.player.getPosition();
 
+            // Time system (day/night cycle)
+            if (this.timeSystem) {
+                this.timeSystem.update(dt);
+                // Forest: darker ambient when inside forest zone
+                if (this.currentZone === 'FOREST') {
+                    this._ambLight.intensity = Math.min(this._ambLight.intensity, 0.18);
+                }
+            }
+
             this.player.update(dt, this.world, this.combat, this.rpg);
             this.combat.update(dt, pos.x, pos.z);
             this.npcSystem.update(dt);
@@ -538,8 +573,8 @@ class Game {
             // Death check
             if (this.rpg.isDead()) this._handleDeath();
 
-            // Update HUD
-            this.ui.updateHUD(this.rpg, this.inventory, this.quests);
+            // Update HUD (includes time clock and reputation)
+            this.ui.updateHUD(this.rpg, this.inventory, this.quests, this.timeSystem);
 
             // Auto-save every 60s
             this._autoSaveT = (this._autoSaveT || 0) + dt;

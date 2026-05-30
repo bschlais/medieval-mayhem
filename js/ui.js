@@ -53,7 +53,7 @@ class UIManager {
 
     /* ===== HUD ===== */
 
-    updateHUD(rpg, inventory, quests) {
+    updateHUD(rpg, inventory, quests, timeSystem) {
         const s = rpg.stats;
         const hpPct  = s.hp / s.maxHp;
         const spPct  = s.stamina / s.maxStamina;
@@ -69,6 +69,29 @@ class UIManager {
         $('#player-name-hud').textContent = this.game.characterData.name;
         $('#inv-gold-amount').textContent = inventory.gold;
         $('#hud-gold').textContent = `🪙 ${inventory.gold}`;
+
+        // Reputation
+        const repTier = rpg.getReputationTier();
+        const repEl = $('#hud-rep');
+        if (repEl) {
+            repEl.textContent = repTier.label;
+            repEl.style.color = repTier.color;
+        }
+
+        // Pending stat points badge
+        const ptsBadge = $('#hud-stat-pts');
+        if (ptsBadge) {
+            ptsBadge.style.display = rpg.pendingStatPoints > 0 ? 'block' : 'none';
+            ptsBadge.textContent   = `${rpg.pendingStatPoints} stat pts! (Press P)`;
+        }
+
+        // Time clock
+        if (timeSystem) {
+            const timeEl = $('#hud-time-text');
+            const iconEl = $('#hud-time-icon');
+            if (timeEl) timeEl.textContent = timeSystem.getTimeString();
+            if (iconEl) iconEl.textContent = timeSystem.getIcon();
+        }
 
         // Active quest objective
         const active = quests.getActive();
@@ -301,17 +324,50 @@ class UIManager {
 
     /* ===== LEVEL UP ===== */
 
-    showLevelUp(level, stats, newTitle) {
+    showLevelUp(level, stats, pendingPoints, newTitle) {
         $('#lu-level-num').textContent = `Level ${level}`;
-        const increases = [
-            `❤️ Max HP → ${stats.maxHp}`,
-            `⚔️ Strength → ${stats.strength}`,
-            `🛡️ Defense → ${stats.defense}`,
-            `💨 Max Stamina → ${stats.maxStamina}`,
-            `🗣️ Charisma → ${stats.charisma}`,
-        ];
-        $('#lu-stats').innerHTML = increases.map(s => `<div class="lu-stat">${s}</div>`).join('');
 
+        // Build interactive stat allocation grid
+        const container = $('#lu-stats');
+        container.innerHTML = '';
+
+        const pts = pendingPoints ?? this.game.rpg.pendingStatPoints;
+
+        const ptsLine = document.createElement('p');
+        ptsLine.className = 'lu-pts-line';
+        ptsLine.id = 'lu-pts-remaining-line';
+        ptsLine.innerHTML = pts > 0
+            ? `Allocate <span id="lu-pts-count" style="color:var(--gold);font-weight:bold">${pts}</span> stat point${pts !== 1 ? 's' : ''}:`
+            : '<span style="color:#888">No pending stat points</span>';
+        container.appendChild(ptsLine);
+
+        const STAT_DEFS = [
+            { key: 'hp',       label: '❤️ HP',       val: stats.maxHp,      gain: '+15 HP'  },
+            { key: 'strength', label: '⚔️ Strength',  val: stats.strength,   gain: '+2 STR'  },
+            { key: 'defense',  label: '🛡️ Defense',   val: stats.defense,    gain: '+1 DEF'  },
+            { key: 'stamina',  label: '💨 Stamina',   val: stats.maxStamina, gain: '+15 STA' },
+            { key: 'charisma', label: '🗣️ Charisma',  val: stats.charisma,   gain: '+2 CHA'  },
+        ];
+
+        const rebuild = () => this.showLevelUp(level, this.game.rpg.stats, this.game.rpg.pendingStatPoints, newTitle);
+
+        STAT_DEFS.forEach(sd => {
+            const row = document.createElement('div');
+            row.className = 'lu-alloc-row';
+            const curPts = this.game.rpg.pendingStatPoints;
+            row.innerHTML = `
+                <span class="la-stat-label">${sd.label}</span>
+                <span class="la-stat-val">${sd.val}</span>
+                <span class="la-stat-gain">${sd.gain}</span>
+                <button class="la-btn" data-stat="${sd.key}" ${curPts <= 0 ? 'disabled' : ''}>+</button>
+            `;
+            row.querySelector('.la-btn').addEventListener('click', () => {
+                if (this.game.rpg.spendStatPoint(sd.key)) rebuild();
+            });
+            container.appendChild(row);
+        });
+
+        // Title unlock
         const titleEl = $('#lu-title-unlock');
         if (newTitle) {
             titleEl.style.display = 'block';
@@ -319,9 +375,8 @@ class UIManager {
         } else {
             titleEl.style.display = 'none';
         }
-        $('#level-up').style.display = 'flex';
 
-        // Particle burst
+        $('#level-up').style.display = 'flex';
         this._levelUpParticles();
     }
 
@@ -370,6 +425,19 @@ class UIManager {
     /* ===== CHARACTER CREATOR ===== */
 
     initCharacterCreator(characterData) {
+        // Race selector
+        document.querySelectorAll('[data-group="race"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-group="race"]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                characterData.race = btn.dataset.val;
+                const rd = RACE_DATA[characterData.race];
+                const desc = $('#race-bonus-text');
+                if (desc && rd) desc.textContent = rd.desc;
+                this.game.updatePreviewCharacter();
+            });
+        });
+
         // Gender toggle
         document.querySelectorAll('[data-group="gender"]').forEach(btn => {
             btn.addEventListener('click', () => {

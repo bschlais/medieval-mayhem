@@ -33,6 +33,32 @@
     <div class="cc-left">
       <h2 class="cc-title">⚔️ Create Your Hero</h2>
 
+      <!-- RACE SELECTOR -->
+      <div class="cc-section cc-race-section">
+        <h3>Race &amp; Class</h3>
+        <div class="cc-race-grid">
+          <button class="cc-race active" data-group="race" data-val="human_knight">
+            <span class="race-emoji">⚔️</span><span class="race-name">Human Knight</span>
+          </button>
+          <button class="cc-race" data-group="race" data-val="goblin">
+            <span class="race-emoji">👺</span><span class="race-name">Goblin</span>
+          </button>
+          <button class="cc-race" data-group="race" data-val="elf">
+            <span class="race-emoji">🏹</span><span class="race-name">Elf</span>
+          </button>
+          <button class="cc-race" data-group="race" data-val="dwarf">
+            <span class="race-emoji">⛏️</span><span class="race-name">Dwarf</span>
+          </button>
+          <button class="cc-race" data-group="race" data-val="wizard">
+            <span class="race-emoji">🧙</span><span class="race-name">Wizard</span>
+          </button>
+          <button class="cc-race" data-group="race" data-val="rogue">
+            <span class="race-emoji">🗡️</span><span class="race-name">Rogue</span>
+          </button>
+        </div>
+        <p id="race-bonus-text" class="race-desc">Balanced fighter. +STR +DEF</p>
+      </div>
+
       <div class="cc-section">
         <h3>Gender</h3>
         <div class="cc-row">
@@ -44,9 +70,9 @@
       <div class="cc-section">
         <h3>Body Type</h3>
         <div class="cc-row">
-          <button class="cc-btn active" data-group="body" data-val="slim">Slim</button>
+          <button class="cc-btn active" data-group="body" data-val="slim">Extremely Slim</button>
           <button class="cc-btn"        data-group="body" data-val="average">Average</button>
-          <button class="cc-btn"        data-group="body" data-val="stocky">Stocky</button>
+          <button class="cc-btn"        data-group="body" data-val="heavy">Very Heavy</button>
         </div>
       </div>
 
@@ -175,6 +201,20 @@
     <!-- Gold display -->
     <div id="hud-gold">🪙 0</div>
 
+    <!-- Time display -->
+    <div id="hud-time">
+      <span id="hud-time-icon">☀️</span>
+      <span id="hud-time-text">7:00 AM</span>
+    </div>
+
+    <!-- Reputation display -->
+    <div id="hud-rep-box">
+      Rep: <span id="hud-rep">Good Standing</span>
+    </div>
+
+    <!-- Pending stat points badge -->
+    <div id="hud-stat-pts" style="display:none">0 stat pts! (Press P)</div>
+
     <!-- Active quest -->
     <div class="hud-quest-box">
       <div class="hud-quest-label">Active Quest</div>
@@ -186,7 +226,7 @@
 
     <!-- Controls bar -->
     <div class="hud-controls">
-      WASD: Move &nbsp;|&nbsp; Left-Click Drag: Camera &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; E: Interact &nbsp;|&nbsp; F: Attack &nbsp;|&nbsp; H: Heal &nbsp;|&nbsp; I: Inventory &nbsp;|&nbsp; J: Quests &nbsp;|&nbsp; ESC: Pause
+      WASD: Move &nbsp;|&nbsp; Shift: Sprint &nbsp;|&nbsp; Left-Click Drag: Camera &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; E: Interact &nbsp;|&nbsp; Space: Attack &nbsp;|&nbsp; H: Heal &nbsp;|&nbsp; I: Inventory &nbsp;|&nbsp; J: Quests &nbsp;|&nbsp; P: Stat Points &nbsp;|&nbsp; ESC: Pause
     </div>
 
   </div>
@@ -313,6 +353,7 @@
   <script src="js/config.js"></script>
   <script src="js/save.js"></script>
   <script src="js/rpg.js"></script>
+  <script src="js/time.js"></script>
   <script src="js/quests.js"></script>
   <script src="js/inventory.js"></script>
   <script src="js/character3d.js"></script>

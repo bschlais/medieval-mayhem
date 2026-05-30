@@ -22,13 +22,22 @@ class CharacterBuilder {
     build(data, scale = 1) {
         const root = new THREE.Group();
 
-        const skinColor = CONFIG.SKIN_COLORS[data.skin]      || CONFIG.SKIN_COLORS.light;
-        const hairColor = CONFIG.HAIR_COLORS[data.hairColor]  || CONFIG.HAIR_COLORS.brown;
-        const eyeColor  = CONFIG.EYE_COLORS[data.eyeColor]   || CONFIG.EYE_COLORS.brown;
-        const armorClr  = CONFIG.ARMOR_COLORS[data.armor]    || CONFIG.ARMOR_COLORS.leather;
-        const shoeColor = CONFIG.SHOE_COLORS[data.shoes]     || CONFIG.SHOE_COLORS.boots;
+        // Race modifies skin default
+        const race   = data.race || 'human_knight';
+        const raceData = RACE_DATA[race] || RACE_DATA.human_knight;
 
-        const bw = data.body === 'stocky' ? 1.1 : data.body === 'slim' ? 0.75 : 0.9;
+        // Goblin race uses goblin_green skin
+        let skinKey = data.skin || 'light';
+        if (race === 'goblin' && skinKey === 'light') skinKey = 'goblin_green';
+
+        const skinColor = CONFIG.SKIN_COLORS[skinKey]           || CONFIG.SKIN_COLORS.light;
+        const hairColor = CONFIG.HAIR_COLORS[data.hairColor]     || CONFIG.HAIR_COLORS.brown;
+        const eyeColor  = CONFIG.EYE_COLORS[data.eyeColor]      || CONFIG.EYE_COLORS.brown;
+        const armorClr  = CONFIG.ARMOR_COLORS[data.armor]       || CONFIG.ARMOR_COLORS.leather;
+        const shoeColor = CONFIG.SHOE_COLORS[data.shoes]        || CONFIG.SHOE_COLORS.boots;
+
+        // Exaggerated body proportions
+        const bw = data.body === 'slim' ? 0.46 : data.body === 'heavy' ? 1.55 : 0.90;
         const legX = 0.22 * bw;
         const armX = bw / 2 + 0.16 * bw;
 
@@ -166,6 +175,16 @@ class CharacterBuilder {
         }
 
         /* ============================================================
+           Heavy body: extra belly
+           ============================================================ */
+        if (data.body === 'heavy') {
+            const belly = this._mesh(new THREE.SphereGeometry(0.48, 8, 7), armorMat);
+            belly.position.set(0, 1.35, 0.32);
+            belly.scale.set(1, 0.85, 1);
+            root.add(belly);
+        }
+
+        /* ============================================================
            Store limb refs for animation
            ============================================================ */
         root.userData.leftLegGroup  = leftLegGroup;
@@ -173,8 +192,108 @@ class CharacterBuilder {
         root.userData.leftArmGroup  = leftArmGroup;
         root.userData.rightArmGroup = rightArmGroup;
 
-        root.scale.setScalar(scale);
+        /* ============================================================
+           Race-specific features
+           ============================================================ */
+        this._applyRaceFeatures(root, race, data, hairMat, skinMat, armX);
+
+        /* Apply race scale on top of user scale */
+        const rs = raceData;
+        root.scale.set(scale * rs.scaleX, scale * rs.scaleY, scale * rs.scaleZ);
         return root;
+    }
+
+    /* ---- Race-specific visual additions ---- */
+    _applyRaceFeatures(root, race, data, hairMat, skinMat, armX) {
+        switch (race) {
+            case 'elf': {
+                // Pointed ears (angled upward)
+                [-1,1].forEach(s => {
+                    const ear = this._mesh(new THREE.BoxGeometry(0.10, 0.55, 0.12), skinMat);
+                    ear.position.set(s*0.50, 2.90, 0);
+                    ear.rotation.z = s * -0.35; // angle outward and up
+                    root.add(ear);
+                    // Ear tip
+                    const tip = this._mesh(new THREE.BoxGeometry(0.07, 0.22, 0.09), skinMat);
+                    tip.position.set(s*0.54, 3.20, 0);
+                    tip.rotation.z = s * -0.5;
+                    root.add(tip);
+                });
+                break;
+            }
+            case 'dwarf': {
+                // Always add an elaborate thick beard (ignores facialHair setting)
+                const db = this._mesh(new THREE.BoxGeometry(0.80, 0.70, 0.18), hairMat);
+                db.position.set(0, 2.32, 0.50);
+                root.add(db);
+                // Braided lower section
+                const braid = this._mesh(new THREE.BoxGeometry(0.28, 0.55, 0.22), hairMat);
+                braid.position.set(0, 1.85, 0.52);
+                root.add(braid);
+                // Bead decorations
+                const beadMat = this._mat(0xFFD700);
+                [0.15, -0.15].forEach(ox => {
+                    const b = this._mesh(new THREE.BoxGeometry(0.12, 0.12, 0.10), beadMat);
+                    b.position.set(ox, 2.05, 0.56);
+                    root.add(b);
+                });
+                break;
+            }
+            case 'wizard': {
+                // Pointed wizard hat
+                const brimMat = this._mat(0x2A006A);
+                const brim = this._mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.12, 10), brimMat);
+                brim.position.set(0, 3.26, 0);
+                root.add(brim);
+                const hat = this._mesh(new THREE.ConeGeometry(0.50, 1.10, 10), brimMat);
+                hat.position.set(0, 3.82, 0);
+                root.add(hat);
+                // Star decoration
+                const star = this._mesh(new THREE.BoxGeometry(0.20, 0.20, 0.06), this._mat(0xFFD700));
+                star.position.set(0, 3.60, 0.52);
+                root.add(star);
+                // Staff in right arm
+                const staff = this._mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.5, 6),
+                    this._mat(0x6B3A1A));
+                staff.position.set(armX + 0.15, 0.8, 0);
+                root.add(staff);
+                const orb = this._mesh(new THREE.SphereGeometry(0.22, 8, 7),
+                    this._mat(0xAA44FF));
+                orb.material.emissive = new THREE.Color(0x6600CC);
+                orb.material.emissiveIntensity = 0.6;
+                orb.position.set(armX + 0.15, 2.1, 0);
+                root.add(orb);
+                break;
+            }
+            case 'rogue': {
+                // Hood/cowl over the head
+                const hoodMat = this._mat(0x222222);
+                const hood = this._mesh(new THREE.BoxGeometry(1.04, 0.60, 1.04), hoodMat);
+                hood.position.set(0, 3.06, -0.06);
+                root.add(hood);
+                const cowl = this._mesh(new THREE.BoxGeometry(0.88, 0.44, 0.24), hoodMat);
+                cowl.position.set(0, 2.78, 0.40);
+                root.add(cowl);
+                // Shadow over eyes (darkness effect)
+                const shadow = this._mesh(new THREE.BoxGeometry(0.80, 0.22, 0.08),
+                    this._mat(0x111111));
+                shadow.position.set(0, 2.82, 0.50);
+                root.add(shadow);
+                break;
+            }
+            case 'goblin': {
+                // Wider, rounder head to match goblin aesthetic
+                // (race scale handles overall size reduction)
+                const ears = [-1,1];
+                ears.forEach(s => {
+                    const e = this._mesh(new THREE.BoxGeometry(0.16, 0.35, 0.14), skinMat);
+                    e.position.set(s*0.52, 2.82, 0);
+                    root.add(e);
+                });
+                break;
+            }
+            // human_knight: no extra features
+        }
     }
 
     /* ---- Armor front/back detail panels ---- */
@@ -324,33 +443,58 @@ class CharacterBuilder {
 
     /* ---- Facial hair ---- */
     _addFacialHair(root, style, mat) {
-        // All positioned clearly in front of head face (z=0.44) by at least 0.04
+        // Mouth center is at y=2.58, z=0.48
+        // Mustache goes ABOVE mouth (y > 2.63)
+        // Beard/stubble goes BELOW mouth (y < 2.54), so mouth stays visible
         const fz = 0.50;
         switch (style) {
             case 'stubble': {
-                const stub = this._mesh(new THREE.BoxGeometry(0.62, 0.14, 0.06), mat);
-                stub.position.set(0, 2.57, fz);
-                root.add(stub);
+                // Thin shadow below mouth – doesn't cover mouth
+                const chin = this._mesh(new THREE.BoxGeometry(0.60, 0.12, 0.06), mat);
+                chin.position.set(0, 2.43, fz);
+                root.add(chin);
+                // Light cheek shadow (sides of face)
+                [-1,1].forEach(s => {
+                    const chk = this._mesh(new THREE.BoxGeometry(0.18, 0.22, 0.05), mat);
+                    chk.position.set(s*0.32, 2.53, fz);
+                    root.add(chk);
+                });
                 break;
             }
             case 'mustache': {
-                const mus = this._mesh(new THREE.BoxGeometry(0.40, 0.12, 0.06), mat);
+                // Sits ABOVE mouth, below nose
+                const mus = this._mesh(new THREE.BoxGeometry(0.42, 0.13, 0.07), mat);
                 mus.position.set(0, 2.65, fz);
                 root.add(mus);
                 break;
             }
             case 'beard': {
-                const b = this._mesh(new THREE.BoxGeometry(0.56, 0.38, 0.10), mat);
-                b.position.set(0, 2.48, fz - 0.02);
+                // Chin beard stays below mouth (top edge at y=2.53)
+                const b = this._mesh(new THREE.BoxGeometry(0.58, 0.40, 0.12), mat);
+                b.position.set(0, 2.33, fz - 0.02);
                 root.add(b);
+                // Sideburns (cheeks, not blocking mouth)
+                [-1,1].forEach(s => {
+                    const sb = this._mesh(new THREE.BoxGeometry(0.15, 0.55, 0.09), mat);
+                    sb.position.set(s*0.38, 2.52, fz - 0.04);
+                    root.add(sb);
+                });
                 break;
             }
             case 'fullbeard': {
-                const fb = this._mesh(new THREE.BoxGeometry(0.66, 0.58, 0.12), mat);
-                fb.position.set(0, 2.44, fz - 0.02);
+                // Full jaw beard (below y=2.54)
+                const fb = this._mesh(new THREE.BoxGeometry(0.68, 0.56, 0.14), mat);
+                fb.position.set(0, 2.25, fz - 0.02);
                 root.add(fb);
-                const mus = this._mesh(new THREE.BoxGeometry(0.44, 0.12, 0.06), mat);
-                mus.position.set(0, 2.66, fz);
+                // Sideburns
+                [-1,1].forEach(s => {
+                    const sb = this._mesh(new THREE.BoxGeometry(0.16, 0.72, 0.10), mat);
+                    sb.position.set(s*0.40, 2.46, fz - 0.04);
+                    root.add(sb);
+                });
+                // Mustache above mouth
+                const mus = this._mesh(new THREE.BoxGeometry(0.46, 0.13, 0.07), mat);
+                mus.position.set(0, 2.67, fz);
                 root.add(mus);
                 break;
             }

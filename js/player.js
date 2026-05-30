@@ -75,8 +75,9 @@ class PlayerController {
     update(dt, world, combat, rpg) {
         if (!this._active) return;
 
-        const run   = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
-        const speed = run ? CONFIG.PLAYER_RUN_SPEED : CONFIG.PLAYER_SPEED;
+        const wantRun = this.keys['ShiftLeft'] || this.keys['ShiftRight'];
+        const run     = wantRun && rpg.stats.stamina > 5;
+        const speed   = run ? CONFIG.PLAYER_RUN_SPEED : CONFIG.PLAYER_SPEED;
         this.isRunning = run;
 
         /* ---- Movement: W = forward (AWAY from camera), S = backward ---- */
