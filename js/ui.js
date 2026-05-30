@@ -65,6 +65,14 @@ class UIManager {
         $('#hp-text').textContent  = `${Math.ceil(s.hp)}/${s.maxHp}`;
         $('#xp-text').textContent  = `${rpg.xp}/${rpg.getXPForNext()} XP`;
         $('#level-text').textContent = `Lv.${rpg.level}`;
+
+        // Hunger bar
+        const hungerFill = $('#hunger-fill');
+        if (hungerFill && s.hunger !== undefined) {
+            const hpct = s.hunger / s.maxHunger;
+            hungerFill.style.width = (hpct * 100) + '%';
+            hungerFill.style.background = hpct < 0.2 ? '#FF4422' : hpct < 0.5 ? '#FF8800' : '#CC8844';
+        }
         $('#player-title').textContent = rpg.activeTitle;
         $('#player-name-hud').textContent = this.game.characterData.name;
         $('#inv-gold-amount').textContent = inventory.gold;

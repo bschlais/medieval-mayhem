@@ -33,9 +33,41 @@ const ITEM_DATA = {
     // Drops / misc
     goblin_ear:       { id: 'goblin_ear',        name: 'Goblin Ear',              type: 'misc',  icon: '👂', desc: 'Proof of victory. Do NOT put near your own ear.' },
     gold_coin:        { id: 'gold_coin',         name: 'Gold Coin',               type: 'currency', icon: '🪙', desc: 'Shiny!' },
+
+    // Food (restore hunger + some HP)
+    bread:            { id: 'bread',            name: 'Bread Loaf',         type: 'consumable', icon: '🍞', heal: 10, food: 35, desc: 'Freshly baked. Still warm.' },
+    cooked_meat:      { id: 'cooked_meat',      name: 'Cooked Meat',        type: 'consumable', icon: '🍖', heal: 20, food: 55, desc: 'Hearty and filling.' },
+    apple:            { id: 'apple',            name: 'Apple',              type: 'consumable', icon: '🍎', heal: 5,  food: 18, desc: 'An apple a day...' },
+    cheese_wedge:     { id: 'cheese_wedge',     name: 'Cheese Wedge',       type: 'consumable', icon: '🧀', heal: 8,  food: 22, desc: 'Suspiciously yellow.' },
+    roasted_chicken:  { id: 'roasted_chicken',  name: 'Roasted Chicken',    type: 'consumable', icon: '🍗', heal: 30, food: 65, desc: 'Wait. Is this...? No. No it isn\'t.' },
+
+    // Loot weapons
+    rusty_dagger:     { id: 'rusty_dagger',     name: 'Rusty Dagger',       type: 'weapon', slot: 'weapon', icon: '🗡️',  power: 7,  desc: 'Questionable rust, high character.' },
+    steel_sword:      { id: 'steel_sword',      name: 'Steel Sword',        type: 'weapon', slot: 'weapon', icon: '⚔️',  power: 18, desc: 'A proper blade.' },
+    war_axe:          { id: 'war_axe',          name: 'War Axe',            type: 'weapon', slot: 'weapon', icon: '🪓',  power: 22, desc: 'Heavy. Dangerous. Beautiful.' },
+
+    // Loot armor/shoes
+    chainmail_coif:   { id: 'chainmail_coif',   name: 'Chainmail Coif',     type: 'armor', slot: 'armor', icon: '🛡️', power: 6,  desc: 'Head and neck protection.' },
+    iron_boots:       { id: 'iron_boots',       name: 'Iron Boots',         type: 'shoes', slot: 'shoes', icon: '👢', power: 3,  desc: 'Heavy but protective.' },
+    fur_cloak:        { id: 'fur_cloak',        name: 'Fur Cloak',          type: 'armor', slot: 'armor', icon: '🧥', power: 4,  desc: 'Warm and surprisingly stylish.' },
+
+    // Supplies
+    rope:             { id: 'rope',             name: 'Rope',               type: 'misc', icon: '🪢', desc: 'Always useful.' },
+    torch:            { id: 'torch',            name: 'Torch',              type: 'misc', icon: '🔦', desc: 'Lights the darkness.' },
+    lockpick:         { id: 'lockpick',         name: 'Lockpick',           type: 'misc', icon: '🔑', desc: 'Opens things. Quietly.' },
+
+    // Throwing rocks
+    throwing_rock:    { id: 'throwing_rock',    name: 'Throwing Rock',      type: 'misc', icon: '🪨', desc: 'A good rock. Solid. Reliable.' },
+
+    // Silly wearables (hat slot)
+    sheep_hat:        { id: 'sheep_hat',        name: 'Sheep Hat',          type: 'hat',  slot: 'hat', icon: '🐑', power: 0, desc: 'Baaaa-rilliant fashion choice. A sheep. On your head.' },
+    bucket_helm:      { id: 'bucket_helm',      name: 'Bucket Helm',        type: 'hat',  slot: 'hat', icon: '🪣', power: 1, desc: 'A bucket. On your head. Unexpectedly effective.' },
+    flower_crown:     { id: 'flower_crown',     name: 'Flower Crown',       type: 'hat',  slot: 'hat', icon: '🌸', power: 0, desc: 'You look fabulous, darling.' },
+    pot_helm:         { id: 'pot_helm',         name: 'Cooking Pot Helm',   type: 'hat',  slot: 'hat', icon: '🫕', power: 3, desc: 'Smells of stew. Surprisingly effective defense.' },
+    antler_hat:       { id: 'antler_hat',       name: 'Antler Hat',         type: 'hat',  slot: 'hat', icon: '🦌', power: 0, desc: 'You look like a festive woodland spirit.' },
 };
 
-const SLOTS = ['weapon', 'armor', 'shoes'];
+const SLOTS = ['weapon', 'armor', 'shoes', 'hat'];
 const INV_SIZE = 24;
 
 class InventorySystem {
@@ -123,9 +155,14 @@ class InventorySystem {
         if (!item || item.type !== 'consumable') return false;
         if (item.heal)    rpg.heal(item.heal);
         if (item.stamina) rpg.stats.stamina = Math.min(rpg.stats.maxStamina, rpg.stats.stamina + item.stamina);
+        if (item.food && rpg.stats.hunger !== undefined) {
+            rpg.stats.hunger = Math.min(rpg.stats.maxHunger, rpg.stats.hunger + item.food);
+        }
         this.removeItem(entry.id, 1);
         return item;
     }
+
+    getEquippedHat() { return this.equipped.hat ? ITEM_DATA[this.equipped.hat.id] : null; }
 
     getBonusStrength() {
         const w = this.equipped.weapon ? (ITEM_DATA[this.equipped.weapon.id]?.power || 0) : 0;
@@ -143,7 +180,8 @@ class InventorySystem {
     toSaveData() { return { slots: this.slots, equipped: this.equipped, gold: this.gold }; }
     fromSaveData(d) {
         this.slots    = d.slots    || new Array(INV_SIZE).fill(null);
-        this.equipped = d.equipped || { weapon: null, armor: null, shoes: null };
+        this.equipped = d.equipped || { weapon: null, armor: null, shoes: null, hat: null };
+        if (!this.equipped.hat) this.equipped.hat = null;
         this.gold     = d.gold     || 0;
     }
 }

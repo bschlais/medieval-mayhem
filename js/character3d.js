@@ -197,10 +197,81 @@ class CharacterBuilder {
            ============================================================ */
         this._applyRaceFeatures(root, race, data, hairMat, skinMat, armX);
 
+        /* ---- Hat wearable ---- */
+        if (data.hat) this._addHat(root, data.hat);
+
         /* Apply race scale on top of user scale */
         const rs = raceData;
         root.scale.set(scale * rs.scaleX, scale * rs.scaleY, scale * rs.scaleZ);
         return root;
+    }
+
+    _addHat(root, hatId) {
+        const headY = 3.25;
+        switch (hatId) {
+            case 'sheep_hat': {
+                // Fluffy white sheep body on head
+                const sheepMat = this._mat(0xF8F8F0);
+                const body = this._mesh(new THREE.SphereGeometry(0.5, 7, 6), sheepMat);
+                body.scale.set(1.2, 0.7, 1.0);
+                body.position.set(0, headY + 0.25, 0);
+                root.add(body);
+                const sHead = this._mesh(new THREE.SphereGeometry(0.22, 6, 5), this._mat(0xDDCCBB));
+                sHead.position.set(0.4, headY + 0.28, 0.35);
+                root.add(sHead);
+                break;
+            }
+            case 'bucket_helm': {
+                const bucketMat = this._mat(0x778899);
+                const bucket = this._mesh(new THREE.CylinderGeometry(0.52, 0.45, 0.65, 8), bucketMat);
+                bucket.position.y = headY + 0.12;
+                root.add(bucket);
+                const rim = this._mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.10, 8), bucketMat);
+                rim.position.y = headY - 0.15;
+                root.add(rim);
+                break;
+            }
+            case 'flower_crown': {
+                const crownBase = this._mesh(new THREE.TorusGeometry(0.48, 0.06, 6, 12), this._mat(0x228B22));
+                crownBase.position.y = headY - 0.05;
+                crownBase.rotation.x = Math.PI / 2;
+                root.add(crownBase);
+                const flColors = [0xFF69B4, 0xFFFF00, 0xFF4500, 0xDA70D6, 0xFF6347];
+                for (let i = 0; i < 5; i++) {
+                    const fl = this._mesh(new THREE.SphereGeometry(0.12, 5, 4), this._mat(flColors[i]));
+                    const a = (i / 5) * Math.PI * 2;
+                    fl.position.set(Math.cos(a) * 0.48, headY + 0.06, Math.sin(a) * 0.48);
+                    root.add(fl);
+                }
+                break;
+            }
+            case 'pot_helm': {
+                const potMat = this._mat(0x888877);
+                const pot = this._mesh(new THREE.CylinderGeometry(0.50, 0.55, 0.70, 8), potMat);
+                pot.position.y = headY + 0.15;
+                root.add(pot);
+                const handle = this._mesh(new THREE.TorusGeometry(0.15, 0.04, 6, 8), potMat);
+                handle.position.set(0.52, headY + 0.4, 0);
+                handle.rotation.y = Math.PI / 2;
+                root.add(handle);
+                break;
+            }
+            case 'antler_hat': {
+                const antlerMat = this._mat(0x8B6914);
+                [-1, 1].forEach(s => {
+                    const stem = this._mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.7, 5), antlerMat);
+                    stem.position.set(s * 0.30, headY + 0.55, 0);
+                    root.add(stem);
+                    [-0.3, 0.3].forEach(ox => {
+                        const branch = this._mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.4, 5), antlerMat);
+                        branch.position.set(s * 0.30 + ox, headY + 0.8, 0);
+                        branch.rotation.z = s * 0.6;
+                        root.add(branch);
+                    });
+                });
+                break;
+            }
+        }
     }
 
     /* ---- Race-specific visual additions ---- */

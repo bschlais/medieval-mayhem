@@ -22,6 +22,11 @@ class Enemy {
         this.patrolCenter   = { x, z };
         this.patrolRadius   = 6 + Math.random() * 6;
         this.patrolT        = Math.random() * Math.PI * 2;
+        this.spawnX    = x;
+        this.spawnZ    = z;
+        this.respawnTimer = 0;
+        this._knockbackVel   = { x: 0, z: 0 };
+        this._knockbackTimer = 0;
 
         this.mesh = tier >= 2 ? this._buildOrc() : window.charBuilder.buildGoblin();
         this.mesh.position.set(x, 0, z);
@@ -108,6 +113,13 @@ class Enemy {
         const dist = Math.sqrt(dx*dx + dz*dz);
 
         this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+        if (this._knockbackTimer > 0) {
+            this._knockbackTimer -= dt;
+            this.mesh.position.x += this._knockbackVel.x * dt;
+            this.mesh.position.z += this._knockbackVel.z * dt;
+            this._knockbackVel.x *= 0.85;
+            this._knockbackVel.z *= 0.85;
+        }
         this.mesh.position.y = Math.sin(Date.now() * 0.002 + this.patrolT) * 0.06;
 
         const detectRange = CONFIG.GOBLIN_DETECT_RANGE * (1 + this.tier * 0.15);
@@ -141,10 +153,18 @@ class Enemy {
         this.hpFill.position.x = -(1 - pct) * 0.55;
     }
 
-    takeDamage(amount) {
+    takeDamage(amount, fromX, fromZ) {
         this.hp -= amount;
         if (this.hp <= 0) { this.hp = 0; this.die(); }
         this._flashRed();
+        if (fromX !== undefined) {
+            const dx = this.mesh.position.x - fromX;
+            const dz = this.mesh.position.z - fromZ;
+            const dist = Math.sqrt(dx*dx + dz*dz) || 1;
+            this._knockbackVel.x = (dx / dist) * 5.0;
+            this._knockbackVel.z = (dz / dist) * 5.0;
+            this._knockbackTimer = 0.22;
+        }
     }
 
     _flashRed() {
@@ -167,11 +187,48 @@ class Enemy {
         this.state = 'dead';
         this.mesh.rotation.x = Math.PI / 2;
         this.mesh.position.y = -0.5;
-        setTimeout(() => this.scene.remove(this.mesh), 2200);
+        this.respawnTimer = CONFIG.GOBLIN_RESPAWN_TIME;
+        setTimeout(() => {
+            if (this.scene) this.scene.remove(this.mesh);
+        }, 2200);
+    }
+
+    respawn() {
+        this.hp      = this.maxHp;
+        this.alive   = true;
+        this.state   = 'patrol';
+        this.respawnTimer = 0;
+        this.mesh    = this.tier >= 2 ? this._buildOrc() : window.charBuilder.buildGoblin();
+        this.mesh.position.set(this.spawnX, 0, this.spawnZ);
+        this.mesh.castShadow = true;
+        this.scene.add(this.mesh);
+        // Re-add HP bar
+        const bg = new THREE.Mesh(
+            new THREE.BoxGeometry(1.1, 0.14, 0.05),
+            new THREE.MeshBasicMaterial({ color: 0x333333 })
+        );
+        bg.position.set(0, this.tier >= 2 ? 4.5 : 3.0, 0);
+        bg.renderOrder = 1;
+        this.mesh.add(bg);
+        this.hpFill = new THREE.Mesh(
+            new THREE.BoxGeometry(1.1, 0.12, 0.06),
+            new THREE.MeshBasicMaterial({ color: this.tier >= 2 ? 0xCC2200 : 0xFF2222, depthTest: false })
+        );
+        this.hpFill.position.set(0, this.tier >= 2 ? 4.5 : 3.0, 0.01);
+        this.mesh.add(this.hpFill);
     }
 
     canAttack() { return this.attackCooldown <= 0 && this.state === 'attack'; }
-    doAttack()  { this.attackCooldown = 2.0 - this.tier * 0.2; return this.damage + Math.floor(Math.random() * 5); }
+    doAttack()  {
+        this.attackCooldown = 2.0 - this.tier * 0.2;
+        // Goblin punch animation
+        const ra = this.mesh.userData.rightArmGroup;
+        if (ra) {
+            ra.rotation.x = -1.3;
+            setTimeout(() => { if (ra) ra.rotation.x = 0; }, 220);
+        }
+        return this.damage + Math.floor(Math.random() * 5);
+    }
 }
 
 /* ================================================================
@@ -184,11 +241,12 @@ class CombatSystem {
         this.quests    = quests;
         this.inventory = inventory;
         this.enemies   = [];
+        this.chickens  = [];
         this.attackCooldown = 0;
 
         this.onKill       = null;
         this.onDamage     = null;
-        this.onRepChange  = null;   // callback(delta, npcName)
+        this.onRepChange  = null;
 
         this._spawnEnemies();
     }
@@ -226,16 +284,37 @@ class CombatSystem {
         this.attackCooldown = Math.max(0, this.attackCooldown - dt);
 
         this.enemies.forEach(e => {
-            if (!e.alive) return;
+            if (!e.alive) {
+                if (e.respawnTimer > 0 && !e._isNightSpawn) {
+                    e.respawnTimer -= dt;
+                    if (e.respawnTimer <= 0) e.respawn();
+                }
+                return;
+            }
             e.update(dt, playerX, playerZ);
             if (e.canAttack()) {
                 const dmg    = e.doAttack();
                 const actual = this.rpg.takeDamage(
                     Math.max(1, dmg - Math.floor(this.inventory.getBonusDefense() * 0.5))
                 );
-                if (this.onDamage) this.onDamage(actual, playerX, playerZ);
+                if (this.onDamage) this.onDamage(actual, playerX, playerZ, e.mesh.position.x, e.mesh.position.z);
             }
         });
+
+        // Update chickens
+        if (this.chickens) {
+            this.chickens.forEach(ch => {
+                if (!ch.alive) return;
+                if (ch._launched) {
+                    ch._vy -= 12 * dt;
+                    ch.mesh.position.x += ch._vx * dt;
+                    ch.mesh.position.z += ch._vz * dt;
+                    ch.mesh.position.y += ch._vy * dt;
+                    ch.mesh.rotation.z += 4 * dt;
+                    if (ch.mesh.position.y < 0) { ch.mesh.position.y = 0; ch.alive = false; ch.mesh.visible = false; }
+                }
+            });
+        }
     }
 
     playerAttack(playerX, playerZ, playerRotY) {
@@ -256,7 +335,7 @@ class CombatSystem {
             const angle = Math.atan2(dx, dz);
             if (Math.abs(this._angleDiff(angle, playerRotY)) > Math.PI * 0.65) return;
 
-            e.takeDamage(atk);
+            e.takeDamage(atk, playerX, playerZ);
             hit.push({ enemy: e, damage: atk, x: e.mesh.position.x, z: e.mesh.position.z });
 
             if (!e.alive) {
@@ -313,6 +392,48 @@ class CombatSystem {
         while (d >  Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
         return d;
+    }
+
+    spawnNightEnemy(x, z) {
+        const e = new Enemy(this.scene, x, z, 0);
+        e._isNightSpawn = true;
+        this.enemies.push(e);
+        return e;
+    }
+
+    despawnNightEnemies() {
+        this.enemies.forEach(e => {
+            if (e._isNightSpawn && e.alive) { e.die(); }
+        });
+        this.enemies = this.enemies.filter(e => !e._isNightSpawn);
+    }
+
+    addChicken(chickenEntity) {
+        this.chickens.push(chickenEntity);
+    }
+
+    tryAttackChicken(playerX, playerZ, playerRotY) {
+        if (!this.chickens) return false;
+        for (const ch of this.chickens) {
+            if (!ch.alive) continue;
+            const dx = ch.mesh.position.x - playerX;
+            const dz = ch.mesh.position.z - playerZ;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            if (dist > CONFIG.KICK_RANGE) continue;
+            const angle = Math.atan2(dx, dz);
+            let diff = angle - playerRotY;
+            while (diff >  Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            if (Math.abs(diff) > Math.PI * 0.7) continue;
+            // Launch chicken!
+            const launchDir = Math.atan2(dx, dz);
+            ch._launched = true;
+            ch._vx = Math.sin(launchDir) * 7;
+            ch._vz = Math.cos(launchDir) * 7;
+            ch._vy = 5;
+            return true;
+        }
+        return false;
     }
 
     isEnemyNearby(px, pz, range = 10) {

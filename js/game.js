@@ -44,6 +44,16 @@ class Game {
         // Level up pending title
         this._pendingTitle = null;
         this._pendingLevelUp = null;
+
+        // Feature state
+        this._nightSpawned   = false;
+        this._insideHouse    = false;
+        this._normalCamPitch = null;
+        this._normalCamDist  = null;
+        this._burning        = false;
+        this._burnTimer      = 0;
+        this._hungerT        = 0;
+        this._projectiles    = [];
     }
 
     /* ================================================================
@@ -241,11 +251,18 @@ class Game {
         this.inventory.addItem('leather_armor');
         this.inventory.addItem('leather_boots');
         this.inventory.addItem('health_potion', 2);
+        this.inventory.addItem('bread', 2);
         this.inventory.equip(0);
         this.inventory.equip(1);
         this.inventory.equip(2);
 
-        this.ui.showNotif('Welcome to Thornwick, brave adventurer!', '⚔️');
+        // Start at home
+        this.player.setPosition(CONFIG.HOME_X, CONFIG.HOME_Z);
+
+        // Register chickens with combat system
+        this.world.chickens.forEach(ch => this.combat.addChicken(ch));
+
+        this.ui.showNotif('Welcome home, brave adventurer! Your quest begins!', '⚔️');
     }
 
     _loadAndStart() {
@@ -262,6 +279,8 @@ class Game {
         this.scene.remove(this.menuParticles);
 
         if (data.position) this.player.setPosition(data.position.x, data.position.z);
+        else this.player.setPosition(CONFIG.HOME_X, CONFIG.HOME_Z);
+        this.world.chickens.forEach(ch => this.combat.addChicken(ch));
         this.ui.showNotif('Journey Resumed!', '⚔️');
     }
 
@@ -301,6 +320,8 @@ class Game {
         // Inventory callback
         this.inventory.onUpdate = () => {
             if (this.state === 'INVENTORY') this.ui.renderInventory(this.inventory, this.rpg);
+            // Rebuild player mesh if hat changes
+            if (this.player) this.player.updateCharacterMesh(this.characterData, this.inventory);
         };
 
         // Build world
@@ -321,8 +342,12 @@ class Game {
             const enemyType = this.combat.enemies.filter(e => !e.alive).pop()?.type || 'enemy';
             this.ui.showNotif(`${enemyType === 'orc' ? 'Orc' : 'Goblin'} defeated! +${xp} XP, +${gold} gold`, '⚔️');
         };
-        this.combat.onDamage = (dmg, x, z) => {
+        this.combat.onDamage = (dmg, x, z, fromX, fromZ) => {
             this.ui.showDamageNumber(dmg, x, z);
+            if (this.player) {
+                this.player.flashHit();
+                if (fromX !== undefined) this.player.applyKnockback(fromX, fromZ);
+            }
         };
         this.combat.onRepChange = (delta, npcName) => {
             this.ui.showNotif(`You attacked ${npcName}! Reputation: ${delta}`, '😡');
@@ -352,18 +377,38 @@ class Game {
             if (this.state === 'PLAYING') {
                 // Attack – SPACEBAR; trigger animation, register hit at punch peak (~120ms)
                 if (e.code === 'Space') {
+                    const pos = this.player.getPosition();
+                    const rot = this.player.getRotation();
+
+                    // Rock throw: if player has a rock, throw it
+                    if (this.inventory.hasItem('throwing_rock')) {
+                        this.player.triggerAttack();
+                        this._throwRock(pos.x, pos.z, rot);
+                        this.inventory.removeItem('throwing_rock', 1);
+                        return;
+                    }
+
+                    // Chicken kick check
+                    const nearChicken = this.world.getNearbyChicken(pos.x, pos.z);
+                    if (nearChicken && nearChicken.alive && !nearChicken._launched) {
+                        this.player.triggerKick();
+                        setTimeout(() => {
+                            if (this.combat.tryAttackChicken(pos.x, pos.z, rot)) {
+                                this.ui.showNotif('Bwaaaak! The chicken has been... launched!', '🐓');
+                                this.rpg.changeReputation(-2);
+                            }
+                        }, 100);
+                        return;
+                    }
+
                     this.player.triggerAttack();
                     setTimeout(() => {
                         if (this.state !== 'PLAYING') return;
-                        const pos = this.player.getPosition();
-                        const rot = this.player.getRotation();
-                        // Try enemy hit first
                         const hits = this.combat.playerAttack(pos.x, pos.z, rot);
                         if (hits.length > 0) {
                             hits.forEach(h => this.ui.showDamageNumber(h.damage, h.x, h.z));
                             this._checkLevelUp();
                         } else {
-                            // Try villager hit (no damage, rep penalty)
                             this.combat.tryAttackVillager(pos.x, pos.z, rot, this.npcSystem);
                         }
                     }, 120);
@@ -401,9 +446,19 @@ class Game {
                     this.quests.progress(qid, oid);
                 });
             }
+            // Generic onTalk for any quest that uses npc target matching
+            this.quests.onTalk(npc.id);
 
-            // Give second quest if applicable (e.g., King gives taco quest then socks)
-            if (npc.questGiveTwo && this.quests.status(npc.id === 'king_edmund' ? 'kings_taco_emergency' : npc.questGiveTwo) === 'completed') {
+            // King quest chain: taco → socks → census → inspection → tournament
+            if (npc.id === 'king_edmund') {
+                const chain = ['kings_taco_emergency', 'royal_sock_search', 'kings_goblin_census', 'kings_royal_inspection', 'kings_tournament'];
+                for (let i = 0; i < chain.length - 1; i++) {
+                    if (this.quests.status(chain[i]) === 'completed' && this.quests.canStart(chain[i + 1])) {
+                        setTimeout(() => this.quests.start(chain[i + 1]), 500);
+                        break;
+                    }
+                }
+            } else if (npc.questGiveTwo && this.quests.status(npc.questGiveTwo) === 'not_started') {
                 setTimeout(() => this.quests.start(npc.questGiveTwo), 500);
             }
             return;
@@ -412,6 +467,11 @@ class Game {
         // Check pickups
         const pickup = this.world.getNearbyPickup(pos.x, pos.z);
         if (pickup) {
+            if (pickup.type === 'bed') {
+                // Sleep interaction
+                this._sleep();
+                return;
+            }
             pickup.used = true;
             pickup.mesh.visible = false;
 
@@ -453,6 +513,169 @@ class Game {
             // Show allocation if there are leftover points
             this.setState('LEVEL_UP');
             this.ui.showLevelUp(this.rpg.level, this.rpg.stats, this.rpg.pendingStatPoints, null);
+        }
+    }
+
+    /* ================================================================
+       SLEEP
+       ================================================================ */
+    _sleep() {
+        this.ui.showNotif('You drift off to sleep... ZZZ', '😴');
+        // Advance time to morning (6:30 AM)
+        if (this.timeSystem) this.timeSystem.timeOfDay = 0.27;
+        // Restore stats
+        setTimeout(() => {
+            this.rpg.stats.hp      = this.rpg.stats.maxHp;
+            this.rpg.stats.stamina = this.rpg.stats.maxStamina;
+            this.rpg.stats.hunger  = Math.min(this.rpg.stats.maxHunger, this.rpg.stats.hunger + 40);
+            this._burning    = false;
+            this._burnTimer  = 0;
+            this.ui.showNotif('Good morning! You feel refreshed.', '☀️');
+        }, 1500);
+    }
+
+    /* ================================================================
+       ROCK THROWING
+       ================================================================ */
+    _throwRock(fromX, fromZ, dir) {
+        const rockMat = new THREE.MeshLambertMaterial({ color: 0x888880 });
+        const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22), rockMat);
+        mesh.position.set(fromX, 1.5, fromZ);
+        this.scene.add(mesh);
+        const vx = Math.sin(dir) * -CONFIG.ROCK_THROW_SPEED;
+        const vz = Math.cos(dir) * -CONFIG.ROCK_THROW_SPEED;
+        const proj = { mesh, vx, vz, vy: 4, hit: false };
+        this._projectiles.push(proj);
+        this.ui.showNotif('Rock thrown!', '🪨');
+    }
+
+    _updateProjectiles(dt) {
+        this._projectiles = this._projectiles.filter(p => {
+            if (p.hit) { this.scene.remove(p.mesh); return false; }
+            p.vy -= 14 * dt;
+            p.mesh.position.x += p.vx * dt;
+            p.mesh.position.z += p.vz * dt;
+            p.mesh.position.y += p.vy * dt;
+            p.mesh.rotation.x += 6 * dt;
+            if (p.mesh.position.y < 0) {
+                this.scene.remove(p.mesh);
+                return false;
+            }
+            // Check enemy hit
+            const px = p.mesh.position.x, pz = p.mesh.position.z;
+            for (const e of this.combat.enemies) {
+                if (!e.alive) continue;
+                const dx = e.mesh.position.x - px, dz = e.mesh.position.z - pz;
+                if (dx*dx + dz*dz < 1.5) {
+                    e.takeDamage(CONFIG.ROCK_THROW_DAMAGE, px, pz);
+                    this.ui.showDamageNumber(CONFIG.ROCK_THROW_DAMAGE, e.mesh.position.x, e.mesh.position.z);
+                    if (!e.alive) {
+                        this.rpg.recordKill(e.type);
+                        this.rpg.addXP(e.xpDrop);
+                        this.quests.onKill(e.type);
+                        this.inventory.addGold(e.goldDrop);
+                        if (this.combat.onKill) this.combat.onKill(e.xpDrop, e.goldDrop);
+                    }
+                    p.hit = true;
+                    this.scene.remove(p.mesh);
+                    return false;
+                }
+            }
+            return true;
+        });
+    }
+
+    /* ================================================================
+       FIRE SYSTEM
+       ================================================================ */
+    _updateFire(dt, pos) {
+        const nearFire = this.world.isNearFire(pos.x, pos.z);
+        if (nearFire) {
+            this._burning  = true;
+            this._burnTimer = CONFIG.BURNING_DURATION;
+        } else if (this._burnTimer > 0) {
+            this._burnTimer -= dt;
+            if (this._burnTimer <= 0) this._burning = false;
+        }
+        if (this._burning) {
+            this._burnDmgT = (this._burnDmgT || 0) + dt;
+            if (this._burnDmgT >= 1) {
+                this._burnDmgT = 0;
+                const dmg = this.rpg.takeDamage(CONFIG.FIRE_DAMAGE_RATE);
+                this.ui.showDamageNumber(dmg, pos.x, pos.z);
+                // Flash player orange
+                this.player.mesh.traverse(c => {
+                    if (c.isMesh && c.material?.emissive) {
+                        c.material.emissive.setHex(0xFF4400);
+                        c.material.emissiveIntensity = 0.8;
+                        setTimeout(() => { if (c.material) { c.material.emissive.setHex(0); c.material.emissiveIntensity = 0; } }, 300);
+                    }
+                });
+            }
+            if (this.rpg.isDead()) this._handleDeath();
+        }
+    }
+
+    /* ================================================================
+       NIGHT MONSTERS
+       ================================================================ */
+    _spawnNightMonsters() {
+        const pos = this.player.getPosition();
+        for (let i = 0; i < CONFIG.NIGHT_MONSTER_COUNT; i++) {
+            let x, z, attempts = 0;
+            do {
+                const angle = Math.random() * Math.PI * 2;
+                const r = CONFIG.NIGHT_SPAWN_RADIUS_MIN + Math.random() * (CONFIG.NIGHT_SPAWN_RADIUS_MAX - CONFIG.NIGHT_SPAWN_RADIUS_MIN);
+                x = Math.cos(angle) * r;
+                z = Math.sin(angle) * r;
+                attempts++;
+            } while (
+                attempts < 20 && (
+                    (Math.abs(x - pos.x) < 5 && Math.abs(z - pos.z) < 5) ||
+                    this.world.isInsideHouse(x, z)
+                )
+            );
+            this.combat.spawnNightEnemy(x, z);
+        }
+        this.ui.showNotif('Night falls... monsters approach the village!', '🌙');
+    }
+
+    /* ================================================================
+       HUNGER SYSTEM
+       ================================================================ */
+    _updateHunger(dt) {
+        this._hungerT += dt;
+        if (this._hungerT >= 4) { // drain every 4 real seconds
+            this._hungerT = 0;
+            this.rpg.stats.hunger = Math.max(0, this.rpg.stats.hunger - CONFIG.HUNGER_DRAIN_RATE * 4);
+        }
+        if (this.rpg.stats.hunger <= 0) {
+            this._starvDmgT = (this._starvDmgT || 0) + dt;
+            if (this._starvDmgT >= 3) {
+                this._starvDmgT = 0;
+                this.rpg.takeDamage(3);
+                this.ui.showNotif('You are starving! Find food!', '😰');
+            }
+        } else if (this.rpg.stats.hunger < 20 && Math.random() < 0.002) {
+            this.ui.showNotif('You are very hungry...', '🍽️');
+        }
+    }
+
+    /* ================================================================
+       HOUSE INTERIOR CAMERA
+       ================================================================ */
+    _updateHouseCamera(pos) {
+        const inside = this.world.isInsideHouse(pos.x, pos.z);
+        if (inside && !this._insideHouse) {
+            this._insideHouse    = true;
+            this._normalCamPitch = this.player.camPitch;
+            this._normalCamDist  = this.player.camDist;
+            this.player.camPitch = 1.45;  // nearly top-down
+            this.player.camDist  = 14;
+        } else if (!inside && this._insideHouse) {
+            this._insideHouse = false;
+            if (this._normalCamPitch !== null) this.player.camPitch = this._normalCamPitch;
+            if (this._normalCamDist  !== null) this.player.camDist  = this._normalCamDist;
         }
     }
 
@@ -556,16 +779,39 @@ class Game {
             this.npcSystem.update(dt);
             this.world.updateSheep(dt);
 
+            // New systems
+            this._updateHouseCamera(pos);
+            this._updateFire(dt, pos);
+            this._updateHunger(dt);
+            this._updateProjectiles(dt);
+
+            // Night monster spawning
+            if (this.timeSystem) {
+                const isNight = this.timeSystem.isNight();
+                if (isNight && !this._nightSpawned) {
+                    this._nightSpawned = true;
+                    this._spawnNightMonsters();
+                } else if (!isNight && this._nightSpawned) {
+                    this._nightSpawned = false;
+                    this.combat.despawnNightEnemies();
+                }
+            }
+
             // Zone detection
             this._checkZone(pos.x, pos.z);
 
-            // Nearby NPC prompt
+            // Nearby NPC / pickup prompt
             const nearNPC = this.npcSystem.getNearby(pos.x, pos.z);
             const nearPickup = this.world.getNearbyPickup(pos.x, pos.z);
+            const nearChicken = this.world.getNearbyChicken(pos.x, pos.z);
             if (nearNPC) {
                 this.ui.showInteractPrompt(true, `Press E to talk to ${nearNPC.name}`);
+            } else if (nearPickup?.type === 'bed') {
+                this.ui.showInteractPrompt(true, 'Press E to sleep (advances time to morning)');
             } else if (nearPickup) {
                 this.ui.showInteractPrompt(true, 'Press E to collect');
+            } else if (nearChicken?.alive) {
+                this.ui.showInteractPrompt(true, 'Press Space to kick the chicken! (It deserves it)');
             } else {
                 this.ui.showInteractPrompt(false);
             }
@@ -604,10 +850,13 @@ class Game {
     }
 
     _handleDeath() {
-        this.ui.showNotif('You were defeated! Respawning...', '💀');
+        this.ui.showNotif('You were defeated! Respawning at home...', '💀');
         this.rpg.stats.hp = Math.floor(this.rpg.stats.maxHp * 0.5);
-        this.player.setPosition(0, 8); // back to village
-        setTimeout(() => this.ui.showNotif('You wake up in the village. With a headache.', '😅'), 2000);
+        this.rpg.stats.stamina = this.rpg.stats.maxStamina;
+        this.player.setPosition(CONFIG.HOME_X, CONFIG.HOME_Z);
+        this._burning = false;
+        this._burnTimer = 0;
+        setTimeout(() => this.ui.showNotif('You wake up in your cozy home. With a massive headache.', '😅'), 2000);
     }
 
     /* ================================================================

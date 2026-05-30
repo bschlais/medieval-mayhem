@@ -111,6 +111,13 @@ class PlayerController {
 
         rpg.regenStamina(dt);
 
+        // Player knockback
+        if (this._knockbackTimer > 0) {
+            this._knockbackTimer -= dt;
+            this.position.x += this._knockbackVel.x * dt;
+            this.position.z += this._knockbackVel.z * dt;
+        }
+
         // Clamp
         this.position.x = Math.max(-290, Math.min(290, this.position.x));
         this.position.z = Math.max(-210, Math.min(290, this.position.z));
@@ -131,24 +138,28 @@ class PlayerController {
         const ra = ud.rightArmGroup;
 
         if (this.attacking) {
-            /* ---- ATTACK ANIMATION ---- */
-            this.attackT += dt * 5;  // ~0.2s total
+            /* ---- ATTACK / KICK ANIMATION ---- */
+            this.attackT += dt * 5;
             if (this.attackT >= 1) {
                 this.attacking = false;
                 this.attackT   = 0;
+                this._attackKick = false;
                 if (ra) { ra.rotation.x = 0; ra.rotation.z = 0; }
                 if (la) { la.rotation.x = 0; }
+                if (rl) rl.rotation.x = 0;
             } else {
-                const t = Math.sin(this.attackT * Math.PI); // 0→1→0
-                if (ra) {
-                    ra.rotation.x = -t * 1.35;  // forward punch
-                    ra.rotation.z =  t * 0.20;  // slight outward
+                const t = Math.sin(this.attackT * Math.PI);
+                if (this._attackKick) {
+                    // Kick: right leg swings forward
+                    if (rl) rl.rotation.x = -t * 1.8;
+                    if (ll) ll.rotation.x = t * 0.2;
+                } else {
+                    if (ra) { ra.rotation.x = -t * 1.35; ra.rotation.z = t * 0.20; }
+                    if (la) la.rotation.x = t * 0.40;
                 }
-                if (la) la.rotation.x = t * 0.40; // counterbalance
             }
-            // During attack: damp walk pose
-            if (ll) ll.rotation.x *= 0.85;
-            if (rl) rl.rotation.x *= 0.85;
+            if (ll && !this._attackKick) ll.rotation.x *= 0.85;
+            if (rl && !this._attackKick) rl.rotation.x *= 0.85;
             this.mesh.position.y = 0;
             return;
         }
@@ -195,6 +206,34 @@ class PlayerController {
         if (this.attacking) return;
         this.attacking = true;
         this.attackT   = 0;
+        this._attackKick = false;
+    }
+
+    triggerKick() {
+        if (this.attacking) return;
+        this.attacking   = true;
+        this.attackT     = 0;
+        this._attackKick = true;
+    }
+
+    flashHit() {
+        this.mesh.traverse(c => {
+            if (c.isMesh && c.material && c.material.emissive) {
+                c.material.emissive.setHex(0xFF0000);
+                c.material.emissiveIntensity = 1.0;
+                setTimeout(() => {
+                    if (c.material) { c.material.emissive.setHex(0); c.material.emissiveIntensity = 0; }
+                }, 200);
+            }
+        });
+    }
+
+    applyKnockback(fromX, fromZ) {
+        const dx = this.position.x - fromX;
+        const dz = this.position.z - fromZ;
+        const dist = Math.sqrt(dx*dx + dz*dz) || 1;
+        this._knockbackVel = { x: (dx/dist) * 3, z: (dz/dist) * 3 };
+        this._knockbackTimer = 0.15;
     }
 
     _angleDiff(a, b) {
@@ -209,9 +248,11 @@ class PlayerController {
     setPosition(x, z) { this.position.set(x, 0, z); }
     setActive(v)   { this._active = v; }
 
-    updateCharacterMesh(characterData) {
+    updateCharacterMesh(characterData, inventory) {
         this.scene.remove(this.mesh);
-        this.mesh = window.charBuilder.build(characterData);
+        const data = { ...characterData };
+        if (inventory?.equipped?.hat) data.hat = inventory.equipped.hat.id;
+        this.mesh = window.charBuilder.build(data);
         this.mesh.position.copy(this.position);
         this.mesh.rotation.y = this.rotation;
         this.mesh.castShadow  = true;

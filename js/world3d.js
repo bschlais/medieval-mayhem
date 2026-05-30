@@ -8,10 +8,14 @@
 
 class WorldBuilder {
     constructor(scene) {
-        this.scene     = scene;
-        this.colliders = [];  // { min:{x,z}, max:{x,z} }
-        this.pickups   = [];
-        this.sheep     = [];
+        this.scene          = scene;
+        this.colliders      = [];
+        this.pickups        = [];
+        this.sheep          = [];
+        this.houseInteriors = [];  // { cx, cz, w, d } — inside bounds
+        this.fireSources    = [];  // { x, z, radius }
+        this.chickens       = [];  // chicken entities
+        this.homePosition   = { x: CONFIG.HOME_X, z: CONFIG.HOME_Z };
     }
 
     build() {
@@ -19,6 +23,7 @@ class WorldBuilder {
         this._buildRoads();
         this._buildLandmarks();
         this._buildVillage();
+        this._buildPlayerHome();
         this._buildCastle();
         this._buildForest();
         this._buildEastford();
@@ -28,6 +33,10 @@ class WorldBuilder {
         this._buildRuins();
         this._buildQuestItems();
         this._buildAmbience();
+        this._buildChickens();
+        this._buildRockPickups();
+        this._buildFireSources();
+        this._buildVillageExpansion();
     }
 
     /* ================================================================
@@ -253,6 +262,9 @@ class WorldBuilder {
         this._house( 24, 0,  -6,  8, 4.8,  7, 0xCC5555, 0x8B2222, 'Butcher', 2);
         this._windmill(-5, 7.5, -33);
 
+        // Road south toward home
+        this._plane(0xA89070, 6, 18, CONFIG.HOME_X, 0.02, 30);
+
         // Market stalls
         this._stall( 2, 0, 19);
         this._stall(-5, 0, 21);
@@ -395,6 +407,9 @@ class WorldBuilder {
 
         /* ---- Interior furniture ---- */
         this._houseInterior(cx, y, cz, w, d, variant);
+
+        /* ---- Track house interior for camera switch ---- */
+        this.houseInteriors.push({ cx, cz, w: w - 0.8, d: d - 0.8 });
 
         /* ---- 5 wall colliders (door gap in south wall) ---- */
         this.colliders.push({ min: { x: cx - w / 2,      z: cz + d / 2 - wt }, max: { x: cx - doorW / 2, z: cz + d / 2 + wt } }); // South-left
@@ -1483,5 +1498,210 @@ class WorldBuilder {
             s.mesh.position.x += Math.sin(s._t + s.mesh.id * 1.3) * 0.008;
             s.mesh.position.z += Math.cos(s._t * 0.7 + s.mesh.id)  * 0.008;
         });
+    }
+
+    isInsideHouse(px, pz) {
+        for (const h of this.houseInteriors) {
+            if (Math.abs(px - h.cx) < h.w / 2 && Math.abs(pz - h.cz) < h.d / 2) return true;
+        }
+        return false;
+    }
+
+    isNearFire(px, pz) {
+        for (const f of this.fireSources) {
+            const dx = px - f.x, dz = pz - f.z;
+            if (dx*dx + dz*dz < f.radius * f.radius) return true;
+        }
+        return false;
+    }
+
+    getNearbyChicken(px, pz, range = 3.5) {
+        for (const ch of this.chickens) {
+            if (!ch.alive) continue;
+            const dx = ch.mesh.position.x - px, dz = ch.mesh.position.z - pz;
+            if (Math.sqrt(dx*dx + dz*dz) < range) return ch;
+        }
+        return null;
+    }
+
+    /* ================================================================
+       PLAYER HOME
+       ================================================================ */
+    _buildPlayerHome() {
+        const hx = CONFIG.HOME_X, hz = CONFIG.HOME_Z;
+        this._house(hx, 0, hz, 9, 5.5, 8, 0xE8D5B7, 0x8B4513, 'Your Home', 1);
+
+        // Bed with pillow (interior, variant 1 already has a bed — add extra details)
+        const bedPostMat = new THREE.MeshLambertMaterial({ color: 0x5C3A1A });
+        [-1, 1].forEach(s => {
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.2, 0.25), bedPostMat);
+            post.position.set(hx + s * 1.2, 1.2, hz - 1.8);
+            this.scene.add(post);
+        });
+
+        // "Bed" label pickup for sleeping
+        const bedMarker = {
+            mesh: new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.5, 0.5),
+                new THREE.MeshLambertMaterial({ color: 0xCC4444, emissive: 0xAA2222, emissiveIntensity: 0.4 })
+            ),
+            type: 'bed',
+            id:   'home_bed',
+            used: false,
+        };
+        bedMarker.mesh.position.set(hx, 1.2, hz - 2);
+        bedMarker.mesh.visible = false; // invisible trigger
+        this.scene.add(bedMarker.mesh);
+        this.pickups.push(bedMarker);
+    }
+
+    /* ================================================================
+       CHICKENS
+       ================================================================ */
+    _buildChickens() {
+        const bodyMat  = new THREE.MeshLambertMaterial({ color: 0xFFFFEE });
+        const combMat  = new THREE.MeshLambertMaterial({ color: 0xFF3300 });
+        const beakMat  = new THREE.MeshLambertMaterial({ color: 0xFFAA00 });
+        const positions = [[8, 25], [-5, 28], [15, 22], [-2, 35], [12, 30], [20, 10]];
+        positions.forEach(([cx, cz]) => {
+            const root = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 7, 6), bodyMat);
+            body.position.y = 0.45;
+            root.add(body);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.20, 6, 5), bodyMat);
+            head.position.set(0, 0.80, 0.25);
+            root.add(head);
+            const comb = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.08), combMat);
+            comb.position.set(0, 1.02, 0.25);
+            root.add(comb);
+            const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), beakMat);
+            beak.position.set(0, 0.80, 0.44);
+            beak.rotation.x = Math.PI / 2;
+            root.add(beak);
+            root.position.set(cx, 0, cz);
+            root.castShadow = true;
+            this.scene.add(root);
+            const ch = { mesh: root, alive: true, _launched: false, _vx: 0, _vy: 0, _vz: 0 };
+            this.chickens.push(ch);
+        });
+    }
+
+    /* ================================================================
+       ROCK PICKUPS
+       ================================================================ */
+    _buildRockPickups() {
+        const rockMat = new THREE.MeshLambertMaterial({ color: 0x888880 });
+        const spots = [
+            [30, 10], [-25, 30], [10, -20], [-40, 5], [45, 25],
+            [-60, 50], [20, 50], [-10, -30], [35, -15], [50, -10],
+        ];
+        spots.forEach(([rx, rz]) => {
+            const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28), rockMat);
+            mesh.position.set(rx, 0.28, rz);
+            mesh.rotation.y = Math.random() * Math.PI;
+            mesh.castShadow = true;
+            this.scene.add(mesh);
+            this.pickups.push({ mesh, type: 'throwing_rock', id: 'rock_' + rx, used: false });
+        });
+    }
+
+    /* ================================================================
+       FIRE SOURCES
+       ================================================================ */
+    _buildFireSources() {
+        const addFire = (fx, fz, radius = 1.5) => {
+            const fireMat = new THREE.MeshLambertMaterial({ color: 0xFF6600, emissive: 0xFF3300, emissiveIntensity: 1 });
+            const fire = new THREE.Mesh(new THREE.ConeGeometry(0.30, 0.65, 6), fireMat);
+            fire.position.set(fx, 0.4, fz);
+            this.scene.add(fire);
+            const pt = new THREE.PointLight(0xFF6600, 2, 10);
+            pt.position.set(fx, 1, fz);
+            this.scene.add(pt);
+            this.fireSources.push({ x: fx, z: fz, radius });
+        };
+
+        // Torches near village buildings
+        addFire(15, -8, 1.2);
+        addFire(-17, -8, 1.2);
+        addFire(0, -25, 1.2);
+        // Castle courtyard braziers
+        addFire(-15, -100, 2.0);
+        addFire(15, -100, 2.0);
+        // Forest campfires (goblin camps already lit, just track zones)
+        this.fireSources.push({ x: -95, z: 80, radius: 2.5 });
+        this.fireSources.push({ x: -140, z: 105, radius: 2.5 });
+    }
+
+    /* ================================================================
+       VILLAGE EXPANSION
+       ================================================================ */
+    _buildVillageExpansion() {
+        // Additional village houses
+        this._house( 30, 0,  25,  9, 5.0,  7, 0xD4C4A0, 0x7B4A20, 'Tanner',    0);
+        this._house(-30, 0,  20,  8, 4.8,  7, 0xC8B890, 0x6B3A10, 'Herbalist', 2);
+        this._house( 28, 0, -22,  9, 5.5,  8, 0xE0C8A0, 0x8B4A18, 'Weaver',    1);
+        this._house(-28, 0, -28,  8, 4.8,  7, 0xD8B880, 0x7A3A10, null,        0);
+        this._house( 35, 0,   5,  8, 4.8,  7, 0xC4B080, 0x6B3A10, null,        2);
+        this._house(-35, 0,   5,  8, 5.0,  7, 0xDCC890, 0x8B4518, null,        1);
+
+        // Blacksmith (large, distinct)
+        const bsx = 38, bsz = -15;
+        this._house(bsx, 0, bsz, 12, 6.0, 10, 0x666666, 0x222222, 'Blacksmith', 0);
+        // Forge glow inside
+        const forgeMat = new THREE.MeshLambertMaterial({ color: 0xFF4400, emissive: 0xFF2200, emissiveIntensity: 1 });
+        const forge = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 1.2), forgeMat);
+        forge.position.set(bsx + 2, 0.6, bsz - 1);
+        this.scene.add(forge);
+        const forgePt = new THREE.PointLight(0xFF4400, 2.5, 12);
+        forgePt.position.set(bsx + 2, 1.5, bsz - 1);
+        this.scene.add(forgePt);
+        this.fireSources.push({ x: bsx + 2, z: bsz - 1, radius: 2.0 });
+
+        // Food Market (open-front building with stalls)
+        const mkx = -15, mkz = 38;
+        this._plane(0xAA9060, 22, 18, mkx, 0.02, mkz);
+        this._stall(mkx - 5, 0, mkz - 2);
+        this._stall(mkx + 5, 0, mkz - 2);
+        this._stall(mkx,     0, mkz + 5);
+        // Market sign post
+        const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 6),
+            new THREE.MeshLambertMaterial({ color: 0x5C3A1A }));
+        signPost.position.set(mkx, 2, mkz - 8);
+        this.scene.add(signPost);
+        const signBoard = new THREE.Mesh(new THREE.BoxGeometry(3, 0.7, 0.12),
+            new THREE.MeshLambertMaterial({ color: 0x8B6914 }));
+        signBoard.position.set(mkx, 4.2, mkz - 8);
+        this.scene.add(signBoard);
+
+        // Loot chests in some houses
+        this._addLootChest( 13, 0.3,  -6, 'bread');
+        this._addLootChest(-15, 0.3, -15, 'rusty_dagger');
+        this._addLootChest(  9, 0.3,  16, 'apple');
+        this._addLootChest( 38, 0.3, -12, 'steel_sword');
+        this._addLootChest(-15, 0.3,  35, 'cooked_meat');
+        this._addLootChest( 30, 0.3,  22, 'fur_cloak');
+        this._addLootChest(-30, 0.3,  17, 'throwing_rock');
+        this._addLootChest( 28, 0.3, -18, 'sheep_hat');
+        this._addLootChest(-28, 0.3, -25, 'rope');
+        this._addLootChest( 35, 0.3,   8, 'pot_helm');
+    }
+
+    _addLootChest(x, y, z, itemType) {
+        const chestMat = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
+        const lidMat   = new THREE.MeshLambertMaterial({ color: 0x6B4510 });
+        const chest = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), chestMat);
+        chest.position.set(x, y + 0.25, z);
+        chest.castShadow = true;
+        this.scene.add(chest);
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.15, 0.5), lidMat);
+        lid.position.set(x, y + 0.58, z - 0.05);
+        lid.rotation.x = -0.3;
+        this.scene.add(lid);
+        // Glow gem on chest
+        const gem = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5),
+            new THREE.MeshLambertMaterial({ color: 0xFFDD44, emissive: 0xFFAA00, emissiveIntensity: 0.8 }));
+        gem.position.set(x, y + 0.55, z + 0.26);
+        this.scene.add(gem);
+        this.pickups.push({ mesh: chest, type: itemType, id: 'chest_' + itemType + '_' + x, used: false });
     }
 }

@@ -39,6 +39,8 @@ class RPGSystem {
             maxStamina: 100,
             stamina:    100,
             charisma:   5,
+            maxHunger:  100,
+            hunger:     100,
         };
 
         this.onLevelUp     = null;
@@ -204,6 +206,7 @@ class RPGSystem {
         this.kills         = d.kills         ?? {};
         this.exploredZones = d.exploredZones ?? [];
         this.reputation    = d.reputation    ?? 70;
-        this.stats         = { ...d.stats };
+        this.stats = { ...d.stats };
+        if (this.stats.maxHunger === undefined) { this.stats.maxHunger = 100; this.stats.hunger = 100; }
     }
 }

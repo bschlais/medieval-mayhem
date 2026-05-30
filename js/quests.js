@@ -89,6 +89,53 @@ const QUEST_DATA = {
         rewards: { xp: 160, gold: 45, items: ['dragon_scale_charm'], title: 'Herb Whisperer' },
         completeText: 'Excellent! Flamewhistle will be so relieved. The dandruff was getting into my soup, my books, my dreams...',
     },
+
+    // === KING QUESTS (major quest chain) ===
+    kings_goblin_census: {
+        id: 'kings_goblin_census',
+        title: '📊 The Royal Goblin Census',
+        giver: 'king_edmund',
+        unlockLevel: 4,
+        description: 'King Edmund demands a precise count of goblins in the forest. "For administrative purposes." He will not say what those purposes are.',
+        humor: '"If we count them properly, we can TAX them," says the King. "They have rights? Do they? Someone look into that."',
+        objectives: [
+            { id: 'defeat_census', type: 'kill',  desc: 'Defeat 10 goblins to "count" them (0/10)', target: 'goblin', required: 10 },
+            { id: 'report_census', type: 'talk',  desc: 'Report the census results to King Edmund',   target: 'king_edmund', required: 1 },
+        ],
+        rewards: { xp: 180, gold: 55, items: ['cooked_meat', 'health_potion'], title: 'Goblin Census Taker' },
+        completeText: 'Excellent! I shall send them a bill. Do goblins even use currency? Doesn\'t matter. Send the bill.',
+    },
+    kings_royal_inspection: {
+        id: 'kings_royal_inspection',
+        title: '🏰 Royal Village Inspection',
+        giver: 'king_edmund',
+        unlockLevel: 6,
+        description: 'The King wants a full inspection of Thornwick\'s key citizens. He is very specific about what he wants to know.',
+        humor: '"Does the baker still put too much salt in the bread? The answer is yes. I still want a report. IN WRITING."',
+        objectives: [
+            { id: 'talk_mayor_inspect',  type: 'talk', desc: 'Inspect Mayor Thomas',      target: 'mayor_thomas',   required: 1 },
+            { id: 'talk_baker_inspect',  type: 'talk', desc: 'Inspect Baker Bess',         target: 'baker_bess',     required: 1 },
+            { id: 'talk_smith_inspect',  type: 'talk', desc: 'Inspect Blacksmith Hank',    target: 'blacksmith_hank', required: 1 },
+            { id: 'report_inspect',      type: 'talk', desc: 'Report findings to the King', target: 'king_edmund',   required: 1 },
+        ],
+        rewards: { xp: 140, gold: 60, items: ['royal_chain_mail', 'apple'] },
+        completeText: '"The salt level in the bread is UNACCEPTABLE. Also the blacksmith is air-hammering again. Noted. You did great."',
+    },
+    kings_tournament: {
+        id: 'kings_tournament',
+        title: '⚔️ The King\'s Grand Tournament',
+        giver: 'king_edmund',
+        unlockLevel: 8,
+        description: 'King Edmund is hosting a "Grand Tournament" to find the bravest warrior. The main event: defeat the most dangerous monsters in the realm.',
+        humor: '"The prize is glory, gold, and a title so long it won\'t fit on a business card. I\'m working on abbreviations."',
+        objectives: [
+            { id: 'tournament_t1', type: 'kill', desc: 'Defeat 3 orcs (0/3)',   target: 'orc',    required: 3 },
+            { id: 'tournament_t2', type: 'kill', desc: 'Defeat 10 goblins (0/10)', target: 'goblin', required: 10 },
+            { id: 'claim_prize',   type: 'talk', desc: 'Claim your prize from King Edmund', target: 'king_edmund', required: 1 },
+        ],
+        rewards: { xp: 350, gold: 120, items: ['steel_sword', 'mega_health_potion'], title: 'Hero of the Kingdom' },
+        completeText: '"Champion! I hereby grant you the title of Hero of the Kingdom! Also here are tacos. EVERYTHING gets tacos now."',
+    },
 };
 
 /* ---- Quest System ---- */
@@ -193,6 +240,16 @@ class QuestSystem {
         return null;
     }
 
-    toSaveData()     { return { state: this.state, haroldEscorted: this.haroldEscorted }; }
-    fromSaveData(d)  { if (d.state) this.state = d.state; this.haroldEscorted = d.haroldEscorted || false; }
+    toSaveData()    { return { state: this.state, haroldEscorted: this.haroldEscorted }; }
+    fromSaveData(d) {
+        if (d.state) this.state = d.state;
+        this.haroldEscorted = d.haroldEscorted || false;
+        // Ensure new quests from updates are present
+        for (const id in QUEST_DATA) {
+            if (!this.state[id]) {
+                this.state[id] = { status: 'not_started', objectives: {} };
+                for (const obj of QUEST_DATA[id].objectives) this.state[id].objectives[obj.id] = 0;
+            }
+        }
+    }
 }
