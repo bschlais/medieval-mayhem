@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Medieval Mayhem ⚔️</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Three.js game canvas (behind all UI) -->
+  <canvas id="gc"></canvas>
+
+  <!-- =======================================
+       SCREEN: MAIN MENU
+       ======================================= -->
+  <div id="screen-menu" class="screen active">
+    <div class="menu-decoration">⚔️</div>
+    <h1 class="menu-title">Medieval Mayhem</h1>
+    <p class="menu-subtitle">A Grand Adventure Awaits!</p>
+    <div class="menu-buttons">
+      <button id="btn-new-journey" class="menu-btn">⚔️ New Journey</button>
+      <button id="btn-resume-journey" class="menu-btn" disabled>📜 Resume Journey</button>
+    </div>
+    <p class="menu-version">v1.0 • Built with Three.js</p>
+  </div>
+
+  <!-- =======================================
+       SCREEN: CHARACTER CREATOR
+       ======================================= -->
+  <div id="screen-char-create" class="screen">
+    <!-- Left: options panel -->
+    <div class="cc-left">
+      <h2 class="cc-title">⚔️ Create Your Hero</h2>
+
+      <div class="cc-section">
+        <h3>Gender</h3>
+        <div class="cc-row">
+          <button class="cc-btn active" data-group="gender" data-val="boy">Boy</button>
+          <button class="cc-btn"        data-group="gender" data-val="girl">Girl</button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Body Type</h3>
+        <div class="cc-row">
+          <button class="cc-btn active" data-group="body" data-val="slim">Slim</button>
+          <button class="cc-btn"        data-group="body" data-val="average">Average</button>
+          <button class="cc-btn"        data-group="body" data-val="stocky">Stocky</button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Skin Tone</h3>
+        <div class="cc-row">
+          <button class="cc-color active" data-group="skin" data-val="pale"   style="background:#FFE8D6" title="Pale"></button>
+          <button class="cc-color"        data-group="skin" data-val="light"  style="background:#FFD5B0" title="Light"></button>
+          <button class="cc-color"        data-group="skin" data-val="medium" style="background:#D4956A" title="Medium"></button>
+          <button class="cc-color"        data-group="skin" data-val="tan"    style="background:#C49A6C" title="Tan"></button>
+          <button class="cc-color"        data-group="skin" data-val="dark"   style="background:#8B5E3C" title="Dark"></button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Hair Style</h3>
+        <div class="cc-row">
+          <button class="cc-btn active" data-group="hair" data-val="short">Short</button>
+          <button class="cc-btn"        data-group="hair" data-val="long">Long</button>
+          <button class="cc-btn"        data-group="hair" data-val="braid">Braid</button>
+          <button class="cc-btn"        data-group="hair" data-val="mohawk">Mohawk</button>
+          <button class="cc-btn"        data-group="hair" data-val="bald">Bald</button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Hair Color</h3>
+        <div class="cc-row">
+          <button class="cc-color active" data-group="hairColor" data-val="brown"  style="background:#5D3A1A" title="Brown"></button>
+          <button class="cc-color"        data-group="hairColor" data-val="black"  style="background:#1A1A1A" title="Black"></button>
+          <button class="cc-color"        data-group="hairColor" data-val="blonde" style="background:#F5D03A" title="Blonde"></button>
+          <button class="cc-color"        data-group="hairColor" data-val="red"    style="background:#C0392B" title="Red"></button>
+          <button class="cc-color"        data-group="hairColor" data-val="gray"   style="background:#9E9E9E" title="Gray"></button>
+          <button class="cc-color"        data-group="hairColor" data-val="white"  style="background:#F5F5F5;border-color:#888" title="White"></button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Eye Color</h3>
+        <div class="cc-row">
+          <button class="cc-color active" data-group="eyeColor" data-val="brown"  style="background:#5D3A1A" title="Brown"></button>
+          <button class="cc-color"        data-group="eyeColor" data-val="blue"   style="background:#1E90FF" title="Blue"></button>
+          <button class="cc-color"        data-group="eyeColor" data-val="green"  style="background:#2E8B57" title="Green"></button>
+          <button class="cc-color"        data-group="eyeColor" data-val="gray"   style="background:#808080" title="Gray"></button>
+          <button class="cc-color"        data-group="eyeColor" data-val="purple" style="background:#8B00FF" title="Purple"></button>
+          <button class="cc-color"        data-group="eyeColor" data-val="amber"  style="background:#FF8C00" title="Amber"></button>
+        </div>
+      </div>
+
+      <div class="cc-section" id="cc-facialhair">
+        <h3>Facial Hair</h3>
+        <div class="cc-row">
+          <button class="cc-btn active" data-group="facialHair" data-val="none">None</button>
+          <button class="cc-btn"        data-group="facialHair" data-val="stubble">Stubble</button>
+          <button class="cc-btn"        data-group="facialHair" data-val="mustache">Mustache</button>
+          <button class="cc-btn"        data-group="facialHair" data-val="beard">Beard</button>
+          <button class="cc-btn"        data-group="facialHair" data-val="fullbeard">Full Beard</button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Starting Armor</h3>
+        <div class="cc-row">
+          <button class="cc-btn active" data-group="armor" data-val="leather">Leather</button>
+          <button class="cc-btn"        data-group="armor" data-val="chain">Chainmail</button>
+          <button class="cc-btn"        data-group="armor" data-val="plate">Plate</button>
+          <button class="cc-btn"        data-group="armor" data-val="robe">Mage Robe</button>
+          <button class="cc-btn"        data-group="armor" data-val="scout">Scout</button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Shoes</h3>
+        <div class="cc-row">
+          <button class="cc-btn active" data-group="shoes" data-val="boots">Boots</button>
+          <button class="cc-btn"        data-group="shoes" data-val="sandals">Sandals</button>
+          <button class="cc-btn"        data-group="shoes" data-val="armored">Armored</button>
+        </div>
+      </div>
+
+      <div class="cc-section">
+        <h3>Hero Name</h3>
+        <input class="cc-name-input" id="char-name" type="text" placeholder="Enter your hero's name..." maxlength="20" value="Hero">
+      </div>
+
+      <button id="btn-start" class="btn-primary">⚔️ Begin Adventure!</button>
+    </div>
+
+    <!-- Right: 3D preview -->
+    <div class="cc-right">
+      <canvas id="preview-canvas"></canvas>
+      <p class="preview-hint">🖱️ Click &amp; drag to rotate</p>
+    </div>
+  </div>
+
+  <!-- =======================================
+       SCREEN: GAME HUD (shown during play)
+       ======================================= -->
+  <div id="screen-hud" style="display:none; pointer-events:none;">
+
+    <!-- Top-left: bars -->
+    <div class="hud-bars" style="pointer-events:none">
+      <div class="hud-bar-row">
+        <span class="hud-label">HP</span>
+        <div class="hud-bar"><div id="hp-fill" class="hud-fill hp" style="width:100%"></div></div>
+        <span class="hud-num" id="hp-text">100/100</span>
+      </div>
+      <div class="hud-bar-row">
+        <span class="hud-label">SP</span>
+        <div class="hud-bar"><div id="sp-fill" class="hud-fill sp" style="width:100%"></div></div>
+      </div>
+      <div class="hud-bar-row">
+        <span class="hud-label">XP</span>
+        <div class="hud-bar"><div id="xp-fill" class="hud-fill xp" style="width:0%"></div></div>
+        <span class="hud-num" id="xp-text">0/100</span>
+      </div>
+    </div>
+
+    <!-- Top-right: level + title -->
+    <div class="hud-level-box">
+      <div class="hud-level-num" id="level-text">Lv.1</div>
+      <div class="hud-title-text" id="player-title">Novice Knight</div>
+      <div class="hud-name-text"  id="player-name-hud">Hero</div>
+    </div>
+
+    <!-- Gold display -->
+    <div id="hud-gold">🪙 0</div>
+
+    <!-- Active quest -->
+    <div class="hud-quest-box">
+      <div class="hud-quest-label">Active Quest</div>
+      <div id="quest-objective">No active quest — talk to villagers!</div>
+    </div>
+
+    <!-- Zone name (center, fades) -->
+    <div id="zone-name"></div>
+
+    <!-- Controls bar -->
+    <div class="hud-controls">
+      WASD: Move &nbsp;|&nbsp; Right-Click Drag: Camera &nbsp;|&nbsp; E: Interact &nbsp;|&nbsp; F: Attack &nbsp;|&nbsp; H: Heal &nbsp;|&nbsp; I: Inventory &nbsp;|&nbsp; J: Quests &nbsp;|&nbsp; ESC: Pause
+    </div>
+
+  </div>
+
+  <!-- =======================================
+       OVERLAY: INTERACT PROMPT
+       ======================================= -->
+  <div id="interact-prompt" style="display:none"></div>
+
+  <!-- =======================================
+       OVERLAY: DIALOGUE
+       ======================================= -->
+  <div id="dialogue" style="display:none">
+    <div class="dialogue-box">
+      <div class="dialogue-portrait">💬</div>
+      <div class="dialogue-main">
+        <div class="dialogue-npc-name" id="dialogue-npc-name">???</div>
+        <div class="dialogue-text"     id="dialogue-text"></div>
+        <div class="dialogue-choices"  id="dialogue-choices">
+          <button class="dlg-btn" id="dialogue-advance">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================
+       OVERLAY: INVENTORY
+       ======================================= -->
+  <div id="inventory">
+    <div class="inv-panel">
+      <div class="inv-header">
+        <h2>🎒 Inventory</h2>
+        <span class="inv-gold">🪙 <span id="inv-gold-amount">0</span></span>
+        <button class="close-btn" id="close-inv">✕</button>
+      </div>
+      <div class="inv-body">
+        <div class="inv-equipment">
+          <h3>Equipment</h3>
+          <div class="equip-slots">
+            <div class="equip-slot" data-slot="weapon">
+              <span class="slot-label">Weapon</span>
+              <div id="slot-weapon"><span class="slot-empty">empty</span></div>
+            </div>
+            <div class="equip-slot" data-slot="armor">
+              <span class="slot-label">Armor</span>
+              <div id="slot-armor"><span class="slot-empty">empty</span></div>
+            </div>
+            <div class="equip-slot" data-slot="shoes">
+              <span class="slot-label">Shoes</span>
+              <div id="slot-shoes"><span class="slot-empty">empty</span></div>
+            </div>
+          </div>
+          <div class="inv-stats">
+            <h3>Stats</h3>
+            <div id="stats-display"></div>
+          </div>
+        </div>
+        <div class="inv-grid-container">
+          <h3>Bag <span style="font-size:0.7rem;color:#666;">(click consumables to use · click gear to equip)</span></h3>
+          <div class="inv-grid" id="inv-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================
+       OVERLAY: QUEST JOURNAL
+       ======================================= -->
+  <div id="quest-journal">
+    <div class="qj-panel">
+      <div class="qj-header">
+        <h2>📜 Quest Journal</h2>
+        <button class="close-btn" id="close-qj">✕</button>
+      </div>
+      <div class="qj-body">
+        <div class="qj-tabs">
+          <button class="qj-tab active" data-tab="active">Active Quests</button>
+          <button class="qj-tab"        data-tab="completed">Completed</button>
+        </div>
+        <div id="qj-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================
+       OVERLAY: LEVEL UP
+       ======================================= -->
+  <div id="level-up">
+    <div class="lu-panel">
+      <div id="lu-particles"></div>
+      <div class="lu-title-text">⚔️ LEVEL UP! ⚔️</div>
+      <p class="lu-level-line">You are now <span id="lu-level-num">Level 2</span>!</p>
+      <div class="lu-stats" id="lu-stats"></div>
+      <div class="lu-title-unlock" id="lu-title-unlock" style="display:none">
+        <h3>🏆 New Title Unlocked!</h3>
+        <p id="lu-title-name"></p>
+      </div>
+      <button id="lu-continue">Continue Adventure!</button>
+    </div>
+  </div>
+
+  <!-- =======================================
+       OVERLAY: PAUSE MENU
+       ======================================= -->
+  <div id="pause-menu">
+    <div class="pause-panel">
+      <h2>⏸ Paused</h2>
+      <button class="pause-btn" id="btn-resume-game">▶ Resume</button>
+      <button class="pause-btn" id="btn-save">💾 Save Game</button>
+      <button class="pause-btn" id="btn-main-menu-from-pause">🏠 Main Menu</button>
+    </div>
+  </div>
+
+  <!-- Floating damage/XP numbers -->
+  <div id="damage-numbers"></div>
+
+  <!-- Notification toast -->
+  <div id="notification" style="display:none"></div>
+
+  <!-- =======================================
+       SCRIPTS (load order matters!)
+       ======================================= -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/rpg.js"></script>
+  <script src="js/quests.js"></script>
+  <script src="js/inventory.js"></script>
+  <script src="js/character3d.js"></script>
+  <script src="js/world3d.js"></script>
+  <script src="js/npc.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/game.js"></script>
+
+</body>
+</html>
