@@ -232,7 +232,7 @@ class Game {
         this._showGameUI(true);
         this.state = 'PLAYING';
         this.scene.background = new THREE.Color(0x87CEEB);
-        this.scene.fog = new THREE.Fog(0x87CEEB, 90, 220);
+        this.scene.fog = new THREE.Fog(0x87CEEB, 120, 320);
         this.scene.remove(this.menuParticles);
 
         // Give starting items
@@ -257,7 +257,7 @@ class Game {
         this._showGameUI(true);
         this.state = 'PLAYING';
         this.scene.background = new THREE.Color(0x87CEEB);
-        this.scene.fog = new THREE.Fog(0x87CEEB, 90, 220);
+        this.scene.fog = new THREE.Fog(0x87CEEB, 120, 320);
         this.scene.remove(this.menuParticles);
 
         if (data.position) this.player.setPosition(data.position.x, data.position.z);
@@ -333,14 +333,17 @@ class Game {
     _setupGameInput() {
         document.addEventListener('keydown', e => {
             if (this.state === 'PLAYING') {
-                // Attack
+                // Attack – trigger animation first, register hit at punch peak (~120ms)
                 if (e.code === 'KeyF') {
-                    const pos = this.player.getPosition();
-                    const rot = this.player.getRotation();
-                    const hits = this.combat.playerAttack(pos.x, pos.z, rot);
                     this.player.triggerAttack();
-                    hits.forEach(h => this.ui.showDamageNumber(h.damage, h.x, h.z));
-                    this._checkLevelUp();
+                    setTimeout(() => {
+                        if (this.state !== 'PLAYING') return;
+                        const pos = this.player.getPosition();
+                        const rot = this.player.getRotation();
+                        const hits = this.combat.playerAttack(pos.x, pos.z, rot);
+                        hits.forEach(h => this.ui.showDamageNumber(h.damage, h.x, h.z));
+                        this._checkLevelUp();
+                    }, 120);
                 }
                 // Interact
                 if (e.code === 'KeyE') this._tryInteract();
@@ -382,10 +385,6 @@ class Game {
             if (npc.questGiveTwo && this.quests.status(npc.id === 'king_edmund' ? 'kings_taco_emergency' : npc.questGiveTwo) === 'completed') {
                 setTimeout(() => this.quests.start(npc.questGiveTwo), 500);
             }
-
-            // Track NPC XP
-            this.rpg.addXP(5);
-            this._checkLevelUp();
             return;
         }
 
@@ -404,8 +403,6 @@ class Game {
                 const item = ITEM_DATA[pickup.type];
                 this.ui.showNotif(`Found: ${item?.name || pickup.type}!`, item?.icon || '📦');
             }
-            this.rpg.addXP(10);
-            this._checkLevelUp();
         }
     }
 
@@ -559,10 +556,10 @@ class Game {
                 if (this.currentZone !== key) {
                     this.currentZone = key;
                     this.ui.showZoneName(zone.name);
-                    const discovered = this.rpg.discoverZone(zone.name);
-                    if (discovered) {
-                        this.ui.showNotif(`Discovered: ${zone.name}!`, '🗺️');
-                        this._checkLevelUp();
+                    // Track zone for save; NO XP awarded for exploration
+                    if (!this.rpg.exploredZones.includes(zone.name)) {
+                        this.rpg.exploredZones.push(zone.name);
+                        this.ui.showNotif(`Entered: ${zone.name}`, '🗺️');
                     }
                 }
                 return;

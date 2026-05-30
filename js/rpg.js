@@ -107,7 +107,6 @@ class RPGSystem {
     discoverZone(zoneName) {
         if (!this.exploredZones.includes(zoneName)) {
             this.exploredZones.push(zoneName);
-            this.addXP(25);
             return true;
         }
         return false;
